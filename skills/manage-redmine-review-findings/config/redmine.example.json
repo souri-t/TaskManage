@@ -1,0 +1,29 @@
+{
+  "redmine_url": "https://redmine.example.com",
+  "project": "review-project",
+  "tracker": "コードレビュー",
+  "custom_fields": {
+    "rule_id": {"id": 1, "name": "ルールID"},
+    "repository": {"id": 2, "name": "リポジトリ"},
+    "base_branch": {"id": 3, "name": "ベースブランチ"},
+    "target_branch": {"id": 4, "name": "ターゲットブランチ"},
+    "commit_sha": {"id": 5, "name": "コミットSHA"},
+    "file_path": {"id": 6, "name": "ファイルパス"},
+    "symbol": {"id": 7, "name": "シンボル"},
+    "line_number": {"id": 8, "name": "行番号"},
+    "fingerprint": {"id": 9, "name": "Fingerprint"},
+    "review_source": {"id": 10, "name": "レビュー生成元"},
+    "first_detected_at": {"id": 11, "name": "初回検出日時"},
+    "last_detected_at": {"id": 12, "name": "最終検出日時"},
+    "last_detected_commit": {"id": 13, "name": "最終検出Commit"},
+    "detection_count": {"id": 14, "name": "検出回数"},
+    "recurrence_count": {"id": 15, "name": "再発回数"},
+    "ai_confidence": {"id": 16, "name": "AI信頼度"}
+  },
+  "priority_map": {
+    "Critical": "即時",
+    "High": "高め",
+    "Medium": "通常",
+    "Low": "低め"
+  }
+}

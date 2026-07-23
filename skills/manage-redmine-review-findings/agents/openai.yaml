@@ -1,0 +1,4 @@
+interface:
+  display_name: "Redmineレビュー指摘管理"
+  short_description: "コードレビュー指摘を照合しRedmineへ安全に反映します"
+  default_prompt: "Use $manage-redmine-review-findings to review the requested code and reconcile the findings with Redmine."
