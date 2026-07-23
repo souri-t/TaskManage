@@ -1,5 +1,6 @@
 {
   "redmine_url": "https://redmine.example.com",
+  "api_key": "replace-with-your-redmine-api-key",
   "project": "review-project",
   "tracker": "コードレビュー",
   "custom_fields": {
