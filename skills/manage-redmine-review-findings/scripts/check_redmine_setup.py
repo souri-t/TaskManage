@@ -36,8 +36,10 @@ def main() -> int:
             json.dumps(
                 {
                     "status": "ok",
+                    "mode": "read_only",
                     "project_id": setup.project_id,
                     "tracker_id": setup.tracker_id,
+                    "checks": setup.checks,
                     "warnings": setup.warnings,
                 },
                 ensure_ascii=False,

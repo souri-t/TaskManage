@@ -214,6 +214,14 @@ cp -R skills/manage-redmine-review-findings ~/.codex/skills/
 
 インストール後、`config/redmine.example.json`を`config/redmine.json`へコピーしてRedmine接続設定を記入します。APIキーも`redmine.json`へ保存できますが、ファイル権限を`600`にする必要があります。CIでは`REDMINE_API_KEY`環境変数を使用でき、設定ファイルより優先されます。設定例と入力形式は、[Redmine設定リファレンス](./skills/manage-redmine-review-findings/references/redmine-setup.md)を参照してください。
 
+レビュー処理の前には、読み取り専用の設定確認を毎回実行します。
+
+```bash
+python3 skills/manage-redmine-review-findings/scripts/check_redmine_setup.py
+```
+
+この確認はGETリクエストだけを使用し、前提項目が不足している場合や確認できない場合は、Redmineへ指摘を反映せず終了します。書き込み権限とワークフロー遷移権限はGETだけでは完全に確認できないため、実際の反映時にRedmineから拒否された場合は処理エラーとして扱います。
+
 ## 開発時の確認
 
 ```bash

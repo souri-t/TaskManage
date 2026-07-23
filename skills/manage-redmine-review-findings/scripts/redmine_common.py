@@ -74,6 +74,35 @@ REQUIRED_INPUT_FIELDS = {
     "findings",
 }
 
+FILTER_CUSTOM_FIELDS = {"fingerprint", "rule_id", "file_path", "symbol"}
+
+EXPECTED_CUSTOM_FIELD_FORMATS = {
+    "rule_id": {"string"},
+    "repository": {"string", "list"},
+    "base_branch": {"string"},
+    "target_branch": {"string"},
+    "commit_sha": {"string"},
+    "file_path": {"string"},
+    "symbol": {"string"},
+    "line_number": {"int"},
+    "fingerprint": {"string"},
+    "review_source": {"list"},
+    "first_detected_at": {"string"},
+    "last_detected_at": {"string"},
+    "last_detected_commit": {"string"},
+    "detection_count": {"int"},
+    "recurrence_count": {"int"},
+    "ai_confidence": {"int", "float"},
+}
+
+CLOSED_STATUS_KEYS = {
+    "fixed",
+    "not_actionable",
+    "risk_accepted",
+    "duplicate",
+    "withdrawn",
+}
+
 
 class ReviewFindingError(RuntimeError):
     """A safe-to-display configuration, input, or Redmine error."""
@@ -243,6 +272,7 @@ class ResolvedSetup:
     status_ids: dict[str, int]
     priority_ids: dict[str, int]
     category_ids: dict[str, int]
+    checks: dict[str, Any]
     warnings: list[str]
 
 
@@ -322,6 +352,10 @@ class RedmineClient:
 def resolve_setup(
     client: RedmineClient, config: dict[str, Any], *, verify_custom_fields: bool = True
 ) -> ResolvedSetup:
+    errors: list[str] = []
+    warnings = [
+        "GETのみではチケット作成・更新・関連追加の権限を完全には確認できません"
+    ]
     project_key = str(config["project"])
     project_result = client.request(
         "GET",
@@ -332,14 +366,22 @@ def resolve_setup(
     trackers = project.get("trackers") or client.request("GET", "/trackers.json").get("trackers", [])
     tracker = next((item for item in trackers if item.get("name") == config["tracker"]), None)
     if not tracker:
-        raise ReviewFindingError(f"トラッカーが見つかりません: {config['tracker']}")
+        errors.append(f"トラッカーが見つかりません: {config['tracker']}")
 
     status_names = {**DEFAULT_STATUS_NAMES, **config.get("status_names", {})}
     statuses = client.request("GET", "/issue_statuses.json").get("issue_statuses", [])
-    by_status_name = {item["name"]: int(item["id"]) for item in statuses}
+    by_status_name = {item["name"]: item for item in statuses}
     missing_statuses = sorted(set(status_names.values()) - by_status_name.keys())
     if missing_statuses:
-        raise ReviewFindingError(f"ステータスが見つかりません: {', '.join(missing_statuses)}")
+        errors.append(f"ステータスが見つかりません: {', '.join(missing_statuses)}")
+    for key, name in status_names.items():
+        status = by_status_name.get(name)
+        if not status or "is_closed" not in status:
+            continue
+        expected_closed = key in CLOSED_STATUS_KEYS
+        if bool(status["is_closed"]) != expected_closed:
+            expected = "完了" if expected_closed else "未完了"
+            errors.append(f"ステータスの完了区分が不正です: {name}（期待値: {expected}）")
 
     priorities = client.request(
         "GET", "/enumerations/issue_priorities.json"
@@ -347,11 +389,11 @@ def resolve_setup(
     by_priority_name = {item["name"]: int(item["id"]) for item in priorities}
     missing_priorities = sorted(set(config["priority_map"].values()) - by_priority_name.keys())
     if missing_priorities:
-        raise ReviewFindingError(f"優先度が見つかりません: {', '.join(missing_priorities)}")
+        errors.append(f"優先度が見つかりません: {', '.join(missing_priorities)}")
 
     categories = project.get("issue_categories", [])
     category_ids = {item["name"]: int(item["id"]) for item in categories}
-    warnings: list[str] = []
+    verified_custom_fields: list[str] = []
 
     if verify_custom_fields:
         try:
@@ -359,7 +401,7 @@ def resolve_setup(
             if remote_fields is None:
                 remote_fields = client.request("GET", "/custom_fields.json").get(
                     "custom_fields", []
-                )
+            )
             by_field_id = {int(item["id"]): item["name"] for item in remote_fields}
             for key, configured in config["custom_fields"].items():
                 field_metadata = next(
@@ -372,38 +414,75 @@ def resolve_setup(
                 )
                 actual = by_field_id.get(int(configured["id"]))
                 if field_metadata is None or actual is None:
-                    raise ReviewFindingError(
+                    errors.append(
                         f"カスタムフィールドIDが見つかりません: {key}={configured['id']}"
                     )
+                    continue
                 if actual != configured["name"]:
-                    raise ReviewFindingError(
+                    errors.append(
                         f"カスタムフィールド名が一致しません: {key}: "
                         f"{configured['name']} != {actual}"
                     )
+                field_format = field_metadata.get("field_format")
+                expected_formats = EXPECTED_CUSTOM_FIELD_FORMATS[key]
+                if field_format and field_format not in expected_formats:
+                    errors.append(
+                        f"カスタムフィールド形式が不正です: {actual}: "
+                        f"{field_format}（期待値: {', '.join(sorted(expected_formats))}）"
+                    )
                 if (
-                    key in {"fingerprint", "rule_id", "file_path", "symbol"}
-                    and field_metadata.get("is_filter") is False
+                    key in FILTER_CUSTOM_FIELDS
+                    and field_metadata.get("is_filter") is not True
                 ):
-                    raise ReviewFindingError(
+                    errors.append(
                         f"カスタムフィールドで「フィルタとして使用」が無効です: {actual}"
                     )
+                if key == "review_source":
+                    possible_values = {
+                        item.get("value") if isinstance(item, dict) else item
+                        for item in field_metadata.get("possible_values", [])
+                    }
+                    missing_sources = {"Codex", "有識者", "静的解析"} - possible_values
+                    if missing_sources:
+                        errors.append(
+                            "レビュー生成元の選択肢が不足しています: "
+                            + ", ".join(sorted(missing_sources))
+                        )
+                verified_custom_fields.append(actual)
         except ReviewFindingError as exc:
             if "Redmine API 403" in str(exc) or "Redmine API 404" in str(exc):
-                warnings.append(
-                    "APIユーザーにカスタムフィールド一覧権限がないため、IDと名称を検証できません"
+                errors.append(
+                    "カスタムフィールドを取得できないため前提条件を検証できません"
                 )
             else:
                 raise
 
+    if errors:
+        raise ReviewFindingError(
+            "Redmineの動作前提が満たされていません:\n- " + "\n- ".join(errors)
+        )
+
+    assert tracker is not None
+
     return ResolvedSetup(
         project_id=int(project["id"]),
         tracker_id=int(tracker["id"]),
-        status_ids={key: by_status_name[name] for key, name in status_names.items()},
+        status_ids={
+            key: int(by_status_name[name]["id"]) for key, name in status_names.items()
+        },
         priority_ids={
             severity: by_priority_name[name]
             for severity, name in config["priority_map"].items()
         },
         category_ids=category_ids,
+        checks={
+            "project": project.get("identifier") or project.get("name"),
+            "tracker": tracker["name"],
+            "statuses": list(status_names.values()),
+            "priorities": sorted(set(config["priority_map"].values())),
+            "custom_fields": verified_custom_fields,
+            "issue_categories": sorted(category_ids),
+        },
         warnings=warnings,
     )
 

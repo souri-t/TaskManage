@@ -10,7 +10,7 @@ description: Review code with Codex and reconcile structured findings with Redmi
 1. Read the repository instructions and the user's review scope and viewpoints.
 2. Review only the requested code and produce findings with every field required by `references/redmine-setup.md`.
 3. Generate the input JSON accepted by `scripts/manage_findings.py`.
-4. Run `scripts/check_redmine_setup.py` when the Redmine configuration is new or has changed.
+4. Run the read-only `scripts/check_redmine_setup.py` before every reconciliation. Stop if any prerequisite is missing or cannot be verified.
 5. Run `scripts/manage_findings.py --dry-run` and inspect every proposed action.
 6. If the request authorizes Redmine reflection and the dry run is valid, run the same command without `--dry-run`.
 7. Return the summary emitted by the script together with any review findings that could not be processed.
@@ -28,6 +28,7 @@ Do not define the review scope or viewpoints inside this skill. Take them from t
 - Preserve `対応不要`, `リスク受容`, `保留`, and `取下げ`; do not reassess their validity.
 - Never print or persist the Redmine API key.
 - Stop before writes when setup validation fails.
+- Keep setup validation read-only. Do not create or modify Redmine administration settings.
 
 Read `references/status-policy.md` when interpreting or changing an existing ticket.
 Read `references/redmine-setup.md` when preparing Redmine or constructing configuration and input files.

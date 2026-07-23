@@ -100,3 +100,19 @@ The script writes the description and remediation into the Redmine description, 
 - Create review-source options `Codex`, `有識者`, and `静的解析`.
 - Grant the API user permission to view, create, edit, comment on, and relate issues.
 - Configure issue priorities referenced by `priority_map`.
+
+## Read-only prerequisite check
+
+Run `scripts/check_redmine_setup.py` before every review reconciliation. The checker uses only GET requests and verifies:
+
+- REST API connectivity and authentication
+- Project and tracker availability
+- Required statuses and their open/closed classification
+- Priority names referenced by `priority_map`
+- Required custom-field IDs, names, types, and project availability
+- `Used as a filter` for Fingerprint, Rule ID, File Path, and Symbol
+- Review-source values `Codex`, `有識者`, and `静的解析`
+
+The checker does not create or change Redmine settings.
+
+GET requests cannot prove permission to create or update issues or relations. Redmine may still reject a later write because of role or workflow permissions; treat that as an operation error.
