@@ -166,6 +166,32 @@ def list_findings(
     }
 
 
+@app.get("/api/v1/repositories")
+def list_repositories(session: DBSession) -> dict:
+    rows = session.execute(
+        select(
+            Repository.id,
+            Repository.name,
+            Repository.display_name,
+            func.count(Finding.id).label("finding_count"),
+        )
+        .outerjoin(Finding, Finding.repository_id == Repository.id)
+        .group_by(Repository.id, Repository.name, Repository.display_name)
+        .order_by(Repository.name)
+    ).all()
+    return {
+        "items": [
+            {
+                "id": repository_id,
+                "name": name,
+                "display_name": display_name,
+                "finding_count": finding_count,
+            }
+            for repository_id, name, display_name, finding_count in rows
+        ]
+    }
+
+
 def get_finding_or_404(session: Session, finding_id: str) -> Finding:
     finding = session.get(Finding, finding_id)
     if not finding:
@@ -420,4 +446,3 @@ def dashboard_summary(session: DBSession) -> dict:
         **counts,
         "by_status": {status: count for status, count in status_rows},
     }
-

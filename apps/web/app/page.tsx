@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { MarkdownView } from "./markdown-view";
-import type { Finding, ReviewRun, TimelineEvent } from "./types";
+import type { Finding, RepositoryOption, ReviewRun, TimelineEvent } from "./types";
 
 type View = "dashboard" | "findings" | "runs";
 type Dashboard = {
@@ -95,8 +95,10 @@ export default function Home() {
   const [selected, setSelected] = useState<Finding | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [runs, setRuns] = useState<ReviewRun[]>([]);
+  const [repositories, setRepositories] = useState<RepositoryOption[]>([]);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [search, setSearch] = useState("");
+  const [repositoryFilter, setRepositoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -106,6 +108,7 @@ export default function Home() {
   const loadFindings = useCallback(async () => {
     const params = new URLSearchParams({ per_page: "100" });
     if (search) params.set("search", search);
+    if (repositoryFilter) params.set("repository", repositoryFilter);
     if (statusFilter) params.set("status", statusFilter);
     if (severityFilter) params.set("severity", severityFilter);
     const payload = await api<{ items: Finding[] }>(
@@ -118,19 +121,21 @@ export default function Home() {
       }
       return payload.items[0] || null;
     });
-  }, [search, statusFilter, severityFilter]);
+  }, [repositoryFilter, search, statusFilter, severityFilter]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [summary, runPayload] = await Promise.all([
+      const [summary, runPayload, repositoryPayload] = await Promise.all([
         api<Dashboard>("/api/v1/dashboard/summary"),
         api<{ items: ReviewRun[] }>("/api/v1/review-runs?per_page=25"),
+        api<{ items: RepositoryOption[] }>("/api/v1/repositories"),
         loadFindings(),
       ]);
       setDashboard(summary);
       setRuns(runPayload.items);
+      setRepositories(repositoryPayload.items);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "読み込みに失敗しました");
     } finally {
@@ -189,7 +194,7 @@ export default function Home() {
   const title = {
     dashboard: "ダッシュボード",
     findings: "指摘一覧",
-    runs: "レビュー実行",
+    runs: "レビュー履歴",
   }[view];
 
   return (
@@ -207,7 +212,7 @@ export default function Home() {
           <ListChecks size={17} />指摘一覧
         </button>
         <button className={view === "runs" ? "nav active" : "nav"} onClick={() => setView("runs")}>
-          <RefreshCw size={17} />レビュー実行
+          <RefreshCw size={17} />レビュー履歴
         </button>
         <div className="sidebar-spacer" />
         <div className="local-note">
@@ -241,12 +246,15 @@ export default function Home() {
         {view === "findings" && (
           <FindingsView
             findings={findings}
+            repositories={repositories}
             selected={selected}
             timeline={timeline}
             search={search}
+            repositoryFilter={repositoryFilter}
             statusFilter={statusFilter}
             severityFilter={severityFilter}
             onSearch={setSearch}
+            onRepositoryFilter={setRepositoryFilter}
             onStatusFilter={setStatusFilter}
             onSeverityFilter={setSeverityFilter}
             onSelect={setSelected}
@@ -322,7 +330,7 @@ function DashboardView({
                 <span className="badge">{run.status}</span>
               </div>
             ))}
-            {!runs.length && <p className="empty">レビュー実行はまだありません。</p>}
+            {!runs.length && <p className="empty">レビュー履歴はまだありません。</p>}
           </div>
         </article>
       </div>
@@ -332,12 +340,15 @@ function DashboardView({
 
 function FindingsView({
   findings,
+  repositories,
   selected,
   timeline,
   search,
+  repositoryFilter,
   statusFilter,
   severityFilter,
   onSearch,
+  onRepositoryFilter,
   onStatusFilter,
   onSeverityFilter,
   onSelect,
@@ -345,12 +356,15 @@ function FindingsView({
   onDuplicate,
 }: {
   findings: Finding[];
+  repositories: RepositoryOption[];
   selected: Finding | null;
   timeline: TimelineEvent[];
   search: string;
+  repositoryFilter: string;
   statusFilter: string;
   severityFilter: string;
   onSearch: (value: string) => void;
+  onRepositoryFilter: (value: string) => void;
   onStatusFilter: (value: string) => void;
   onSeverityFilter: (value: string) => void;
   onSelect: (finding: Finding) => void;
@@ -364,6 +378,18 @@ function FindingsView({
           <Search size={16} />
           <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="タイトル、ファイル、Rule ID" />
         </label>
+        <select
+          aria-label="リポジトリ"
+          value={repositoryFilter}
+          onChange={(event) => onRepositoryFilter(event.target.value)}
+        >
+          <option value="">すべてのリポジトリ</option>
+          {repositories.map((repository) => (
+            <option key={repository.id} value={repository.name}>
+              {repository.display_name} ({repository.finding_count})
+            </option>
+          ))}
+        </select>
         <select value={statusFilter} onChange={(event) => onStatusFilter(event.target.value)}>
           <option value="">すべての状態</option>
           {statusOptions.map((status) => <option key={status}>{status}</option>)}
@@ -514,7 +540,7 @@ function RunsView({ runs }: { runs: ReviewRun[] }) {
   return (
     <section className="content">
       <article className="panel runs-panel">
-        <div className="panel-heading"><h2>API登録履歴</h2><span>{runs.length}件</span></div>
+        <div className="panel-heading"><h2>レビュー履歴</h2><span>{runs.length}件</span></div>
         <div className="runs-table-wrap">
           <table className="runs-table">
             <thead><tr><th>対象</th><th>Commit</th><th>生成元</th><th>ファイル</th><th>検出</th><th>結果</th></tr></thead>
@@ -531,7 +557,7 @@ function RunsView({ runs }: { runs: ReviewRun[] }) {
               ))}
             </tbody>
           </table>
-          {!runs.length && <p className="empty">レビュー実行はまだありません。</p>}
+          {!runs.length && <p className="empty">レビュー履歴はまだありません。</p>}
         </div>
       </article>
     </section>

@@ -70,6 +70,6 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
   await status.selectOption("確認中");
   await expect(status).toHaveValue("確認中");
 
-  await page.getByRole("button", { name: "レビュー実行" }).click();
+  await page.getByRole("button", { name: "レビュー履歴" }).click();
   await expect(page.getByText(repository).first()).toBeVisible();
 });

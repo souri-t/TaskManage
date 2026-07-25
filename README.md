@@ -47,14 +47,15 @@ APP_OPERATOR_NAME=your-name docker compose up --build -d
 - ヘルスチェック: <http://127.0.0.1:8080/healthz>
 - Readiness: <http://127.0.0.1:8080/readyz>
 
-停止してもnamed volumeのSQLiteデータは保持されます。
+SQLiteファイルはホスト側の`./data/review-hub.db`へ保存されます。
+コンテナを停止・削除しても、このファイルは保持されます。
 
 ```bash
 docker compose down
 ```
 
-> **データ消失に注意:** `docker compose down -v`、`docker volume rm`、
-> Docker Desktopのボリューム削除を行うと全データが失われます。
+> **データ消失に注意:** ホスト側の`./data/review-hub.db`、WAL、
+> SHMファイル、または`./data`ディレクトリを削除するとデータが失われます。
 > 自動バックアップ、世代管理、外部ストレージ連携は実装していません。
 
 ## Codexからの登録
@@ -80,6 +81,7 @@ curl --fail-with-body \
 
 主なAPI:
 
+- `GET /api/v1/repositories`（レビュー入力から自動登録されたリポジトリ）
 - `GET /api/v1/findings`、`GET /api/v1/findings/{id}`
 - `GET /api/v1/findings/{id}/timeline`
 - `POST /api/v1/findings`（有識者指摘）

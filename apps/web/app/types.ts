@@ -45,3 +45,9 @@ export type ReviewRun = {
   summary: Record<string, number | string>;
 };
 
+export type RepositoryOption = {
+  id: string;
+  name: string;
+  display_name: string;
+  finding_count: number;
+};

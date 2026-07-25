@@ -33,7 +33,7 @@ services:
     expose:
       - "8000"
     volumes:
-      - review_hub_data:/data
+      - ./data:/data
     healthcheck:
       test:
         - CMD
@@ -44,6 +44,3 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
-
-volumes:
-  review_hub_data:

@@ -22,12 +22,25 @@ engine: Engine = create_engine(settings.database_url, connect_args=connect_args)
 
 @event.listens_for(engine, "connect")
 def configure_sqlite(dbapi_connection, _connection_record) -> None:
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode = WAL")
-    cursor.execute("PRAGMA foreign_keys = ON")
-    cursor.execute("PRAGMA busy_timeout = 30000")
-    cursor.execute("PRAGMA synchronous = NORMAL")
-    cursor.close()
+    # Python 3.12+ starts a transaction for PRAGMA statements when
+    # autocommit=False. journal_mode cannot change while that transaction is
+    # active, so initialize connection PRAGMAs in autocommit mode and then
+    # restore the requested non-legacy transaction mode.
+    previous_autocommit = getattr(dbapi_connection, "autocommit", None)
+    if previous_autocommit is not None:
+        dbapi_connection.autocommit = True
+    try:
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode = WAL")
+            cursor.execute("PRAGMA foreign_keys = ON")
+            cursor.execute("PRAGMA busy_timeout = 30000")
+            cursor.execute("PRAGMA synchronous = NORMAL")
+        finally:
+            cursor.close()
+    finally:
+        if previous_autocommit is not None:
+            dbapi_connection.autocommit = previous_autocommit
 
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)

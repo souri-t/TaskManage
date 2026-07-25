@@ -116,6 +116,50 @@ def test_repository_scopes_duplicate_candidates():
     assert automated.json()["results"][0]["action"] == "created"
 
 
+def test_repositories_are_auto_registered_and_listed():
+    response = client.post(
+        "/api/v1/reconciliations",
+        json=payload(),
+        headers={"Idempotency-Key": "repository-list"},
+    )
+    assert response.status_code == 200
+
+    repositories = client.get("/api/v1/repositories")
+    assert repositories.status_code == 200
+    assert repositories.json()["items"] == [
+        {
+            "id": repositories.json()["items"][0]["id"],
+            "name": "example/repository",
+            "display_name": "example/repository",
+            "finding_count": 1,
+        }
+    ]
+
+
+def test_findings_can_be_filtered_by_repository():
+    first = client.post(
+        "/api/v1/findings",
+        json={**payload()["findings"][0], "repository": "first/repository"},
+    )
+    second = client.post(
+        "/api/v1/findings",
+        json={
+            **payload()["findings"][0],
+            "repository": "second/repository",
+            "title": "Second finding",
+        },
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    filtered = client.get(
+        "/api/v1/findings", params={"repository": "second/repository"}
+    )
+    assert filtered.status_code == 200
+    assert filtered.json()["total"] == 1
+    assert filtered.json()["items"][0]["repository"] == "second/repository"
+
+
 def test_transition_and_duplicate_cycle_protection():
     first = client.post("/api/v1/findings", json={
         **payload()["findings"][0],

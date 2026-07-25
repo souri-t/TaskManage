@@ -11,7 +11,8 @@ coverage/
 test-results/
 playwright-report/
 .playwright-cli/
-data/
+/data/*
+!/data/.gitkeep
 *.db
 *.db-shm
 *.db-wal
