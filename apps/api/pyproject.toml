@@ -1,0 +1,33 @@
+[project]
+name = "review-hub-api"
+version = "0.1.0"
+description = "Review Hub reconciliation and tracking API"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic==1.16.5",
+  "fastapi==0.116.1",
+  "pydantic-settings==2.10.1",
+  "sqlalchemy==2.0.43",
+  "uvicorn[standard]==0.35.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx==0.28.1",
+  "pytest==8.4.2",
+  "pytest-cov==6.2.1",
+]
+
+[project.scripts]
+redmine-import = "review_hub.redmine_import:main"
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["review_hub*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

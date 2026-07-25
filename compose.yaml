@@ -1,0 +1,49 @@
+name: review-hub
+
+services:
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  web:
+    build:
+      context: ./apps/web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      REVIEW_HUB_DATABASE_URL: sqlite:////data/review-hub.db
+      REVIEW_HUB_OPERATOR_NAME: ${APP_OPERATOR_NAME:-local-user}
+    expose:
+      - "8000"
+    volumes:
+      - review_hub_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  review_hub_data:

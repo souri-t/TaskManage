@@ -1,232 +1,182 @@
-# Redmine Review Findings Skill
+# Review Hub
 
-Codexがレビュー指摘を既存の履歴と照合し、Redmineへ反映するためのスキルを配布するプロジェクトです。
+Codexが検出したコードレビュー指摘と、有識者が登録した指摘を同じ履歴として管理する
+localhost専用システムです。Codexは外部でコードをレビューし、Review Hub REST APIへ
+dry-run後に結果を登録します。Review Hub自身はコード取得やAI推論を行いません。
 
-レビュー観点とレビュー範囲はこの処理では定義しません。Codexが生成したレビュー指摘に対して、既存指摘との照合、状態に応じた処理、Redmineへの反映、および処理結果の出力を行います。
-
-## 処理構成
+## 構成
 
 ```mermaid
-flowchart TD
-    Prompt["レビュー指示"]
-    Source["レビュー対象コード"]
+flowchart LR
+    User["開発者"] --> Codex["Codex<br/>コードレビュー"]
+    Repo[("ローカルGit")] --> Codex
+    Codex -->|"dry-run / apply"| Caddy
 
-    subgraph Codex["Codex"]
-        direction TB
-        Review["コードレビュー<br/>登録項目を含む指摘を生成"]
-        Fingerprint["Fingerprint生成<br/>必要な項目を正規化"]
-        Match["既存チケット照合<br/>一致・重複候補を判定"]
-        Policy["状態別処理判定"]
-        Apply["登録・更新・再オープン・スキップ"]
-        Summary["処理結果サマリー"]
+    subgraph Compose["Docker Compose"]
+        Caddy["Caddy<br/>127.0.0.1:8080"]
+        Web["Next.js<br/>管理画面"]
+        API["FastAPI<br/>1 worker"]
+        DB[("SQLite<br/>/data/review-hub.db")]
+        Caddy --> Web
+        Caddy --> API
+        Web --> API
+        API --> DB
     end
-
-    Client["スキル同梱の<br/>Redmine APIクライアント"]
-    Redmine[("Redmine<br/>レビュー履歴の正本")]
-    Human["有識者レビュー"]
-    Result["処理結果"]
-
-    Prompt --> Review
-    Source --> Review
-    Review --> Fingerprint
-    Fingerprint --> Match
-    Match --> Client
-    Match --> Policy
-    Policy --> Apply
-    Apply --> Client
-    Client <-->|"検索・作成・更新"| Redmine
-    Apply --> Summary
-    Summary --> Result
-    Human -->|"Redmineへ直接登録"| Redmine
 ```
 
-## この処理で行うこと
-
-- Codexによるコードレビューと登録項目を含む指摘の生成
-- Fingerprintの生成
-- Redmine上の既存チケットとの照合
-- 既存ステータスに応じた登録、更新、再オープン、スキップ
-- Redmineへの反映と処理結果の出力
-
-以下はこの処理では定義しません。
-
-- レビュー観点の決定
-- レビュー範囲の決定
-- 有識者による最終判断
-
-## 既存チケットとの照合
-
-同じ指摘の二重登録を防ぐため、以下の情報からFingerprintを生成します。
-
-- Repository
-- Rule ID
-- File Path
-- Symbol
-- Normalized Code Context
-
-Fingerprintが完全一致した場合は同じ指摘として既存チケットを更新します。
-
-Rule ID、File Path、Symbolのみが一致した場合は重複候補として扱い、自動的には統合しません。Fingerprintは完全一致を判定するための技術的な識別子であり、問題の意味的な同一性を判断するものではありません。
-
-## 主な状態処理
-
-- 未対応の既存チケットを再検出した場合は、状態を維持して最終検出情報と検出回数を更新する
-- 「修正済み」の指摘を再検出した場合は、再発として「確認中」へ戻す
-- 「重複」の指摘を再検出した場合は、重複元のチケットを更新する
-- 「対応不要」「リスク受容」「保留」「取下げ」はCodexが妥当性を再評価しない
-- 有識者レビューはCodexレビューより優先し、Codexによる自動変更の対象にしない
-
-## Redmine連携
-
-- レビュー履歴の正本はRedmineとする
-- Codexレビュー、有識者レビュー、静的解析結果は同じトラッカーで管理する
-- Redmineの操作にはスキル同梱のAPIクライアントを使用する
-- Redmineの内部IDや認証情報をコードへ埋め込まない
-- 処理後は登録、更新、再発、スキップ、エラーなどの件数を出力する
-
-## Redmineの事前準備
-
-### プロジェクトとトラッカー
-
-- レビュー指摘を管理するRedmineプロジェクトを用意する
-- Codexレビュー、有識者レビュー、静的解析結果で共通して使用するトラッカーを用意する
-- RedmineのREST APIを有効にする
-
-タイトル、詳細説明、修正案、重要度、カテゴリは、可能な限りRedmineの標準項目を使用します。
-
-| レビュー項目 | Redmine項目 |
-| --- | --- |
-| タイトル | 題名 |
-| 詳細説明・修正案 | 説明 |
-| 重要度 | 優先度 |
-| カテゴリ | チケットのカテゴリ |
-| 状態 | ステータス |
-
-### ステータス
-
-以下のステータスを用意します。
-
-| ステータス | Redmine上の扱い |
-| --- | --- |
-| 新規 | 未完了 |
-| 確認中 | 未完了 |
-| 対応対象 | 未完了 |
-| 対応中 | 未完了 |
-| 修正確認中 | 未完了 |
-| 保留 | 未完了 |
-| 修正済み | 完了 |
-| 対応不要 | 完了 |
-| リスク受容 | 完了 |
-| 重複 | 完了 |
-| 取下げ | 完了 |
-
-Redmineのワークフロー設定で、Codexが使用するAPIユーザーに必要な更新を許可します。少なくとも、新規チケットの登録、既存チケットの更新、および「修正済み」から「確認中」への変更が必要です。
-
-### カスタムフィールド
-
-以下のチケット用カスタムフィールドを用意します。
-
-| 項目 | 推奨形式 | 用途 |
+| サービス | 役割 | 外部公開 |
 | --- | --- | --- |
-| ルールID | テキスト | 指摘ルールの識別 |
-| リポジトリ | リストまたはテキスト | 対象リポジトリの識別 |
-| ベースブランチ | テキスト | 比較元ブランチ |
-| ターゲットブランチ | テキスト | 比較先ブランチ |
-| コミットSHA | テキスト | 検出時のCommit |
-| ファイルパス | テキスト | 対象ファイル |
-| シンボル | テキスト | 対象クラス、関数、メソッドなど |
-| 行番号 | 整数 | 検出位置 |
-| Fingerprint | テキスト | 同一指摘の完全一致検索 |
-| レビュー生成元 | リスト | Codex、有識者、静的解析の識別 |
-| 初回検出日時 | テキスト | 最初に検出した日時をISO 8601形式で保持 |
-| 最終検出日時 | テキスト | 最後に検出した日時をISO 8601形式で保持 |
-| 最終検出Commit | テキスト | 最後に検出したCommit |
-| 検出回数 | 整数 | 同一指摘の検出回数 |
-| 再発回数 | 整数 | 修正済み後の再発回数 |
-| AI信頼度 | 整数（0～100） | Codexレビューの信頼度 |
+| `proxy` | CaddyによるWeb/API振り分け | `127.0.0.1:8080`のみ |
+| `web` | Next.js管理画面 | なし |
+| `api` | FastAPI、照合、状態管理、SQLite所有 | なし |
 
-Fingerprint、ルールID、ファイルパス、シンボルは「フィルタとして使用」を有効にし、Redmineの一覧画面とREST APIから検索できる設定にします。FingerprintはCodexレビューと静的解析では必須とし、有識者がRedmineへ直接登録する場合は任意とします。
+認証はありません。単一端末・単一利用者・Uvicorn 1 workerを前提とし、APIの
+書き込み処理はプロセス内Lockで直列化します。SQLite接続にはWAL、外部キー、
+30秒のbusy timeout、`synchronous=NORMAL`を設定します。
 
-レビュー生成元の選択肢には「Codex」「有識者」「静的解析」を設定します。有識者レビューでも、FingerprintとAI信頼度を除く照合用項目を入力します。
+## 起動
 
-Redmineの優先度を重要度として使用するため、Codexが出力する重要度との対応関係を設定します。
+Docker Compose v2が必要です。
 
-「重複」になったチケットと重複元チケットの対応には、カスタムフィールドではなくRedmineのチケット間の関連を使用します。重複候補はチケットの注記へ記録します。
+```bash
+APP_OPERATOR_NAME=your-name docker compose up --build -d
+```
 
-### APIユーザー
+- 管理画面: <http://127.0.0.1:8080/>
+- OpenAPI: <http://127.0.0.1:8080/docs>
+- ヘルスチェック: <http://127.0.0.1:8080/healthz>
+- Readiness: <http://127.0.0.1:8080/readyz>
 
-Codexが使用する専用APIユーザーを用意し、対象プロジェクトに以下の権限を付与します。
+停止してもnamed volumeのSQLiteデータは保持されます。
 
-- チケットの閲覧
-- チケットの追加
-- チケットの編集
-- 注記の追加
-- チケット間の関連の追加
+```bash
+docker compose down
+```
 
-APIキーはGit管理対象外の`config/redmine.json`、環境変数、またはSecret管理機構で管理します。プロジェクト、トラッカー、ステータス、カスタムフィールドは名称または設定上の識別子から解決し、内部IDをコードへ直接記述しません。
+> **データ消失に注意:** `docker compose down -v`、`docker volume rm`、
+> Docker Desktopのボリューム削除を行うと全データが失われます。
+> 自動バックアップ、世代管理、外部ストレージ連携は実装していません。
 
-## 想定フォルダ構成
+## Codexからの登録
+
+入力全体は[API契約](./skills/manage-review-findings/references/api-contract.md)を
+参照してください。本登録前に必ず同じJSONでdry-runします。
+
+```bash
+curl --fail-with-body \
+  -H 'Content-Type: application/json' \
+  --data-binary @review-findings.json \
+  http://127.0.0.1:8080/api/v1/reconciliations/dry-run
+
+curl --fail-with-body \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: example/repository:0123456789abcdef:Codex' \
+  --data-binary @review-findings.json \
+  http://127.0.0.1:8080/api/v1/reconciliations
+```
+
+同じIdempotency Keyの再送は保存済み結果を返します。本登録は指摘ごとに短い
+トランザクションを完了し、1件失敗しても残りを処理して`partial_error`を返します。
+
+主なAPI:
+
+- `GET /api/v1/findings`、`GET /api/v1/findings/{id}`
+- `GET /api/v1/findings/{id}/timeline`
+- `POST /api/v1/findings`（有識者指摘）
+- `POST /api/v1/findings/{id}/transitions`
+- `POST /api/v1/findings/{id}/duplicate`
+- `GET /api/v1/review-runs`、`GET /api/v1/review-runs/{id}`
+- `GET /api/v1/dashboard/summary`
+
+## Markdownとコード
+
+説明と修正案はMarkdown原文で保存し、画面ではGFMとShikiを使って表示します。
+生HTML、非HTTP(S)リンク、外部埋め込みはレンダリングしません。fenced code block、
+言語表示、行番号、コピー、Markdown原文とプレビューの切替に対応します。
+
+`code_context`はFingerprintを計算した後、最大50行・16KiBへ制限し、秘密鍵と
+一般的なAPIキー・パスワード代入を`[REDACTED]`へ置換してから保存します。
+未加工の内容はDB、監査イベント、アプリケーションログへ保存しません。
+
+## 状態と照合
+
+FingerprintはRepository、Rule ID、正規化したFile Path、Symbol、Code Contextから
+生成します。完全一致は既存指摘の検出回数を更新し、「修正済み」は再発として
+「確認中」へ戻します。Rule ID、File Path、Symbolだけが一致する場合は重複候補を
+記録し、自動統合しません。有識者指摘はCodexによる自動更新より優先します。
+
+SQLiteからPostgreSQLへ切り替える目安は、複数人利用、APIの複数プロセス化、
+継続的な並行登録、Lock外の`database is locked`、複雑な全文検索や外部BIが
+必要になった場合です。
+
+## Redmineからの一度限りの移行
+
+移行はAPIサービスを停止した状態で実行します。設定形式は既存Redmineスキルの
+`config/redmine.example.json`を利用できます。
+
+```bash
+docker compose stop api
+docker compose run --rm api redmine-import \
+  --config /path/in/container/redmine.json --dry-run
+docker compose run --rm api redmine-import \
+  --config /path/in/container/redmine.json --apply
+docker compose start api
+```
+
+実ファイルを渡す場合は`docker compose run`へ読み取り専用volume指定を追加して
+ください。`legacy_redmine_issue_id`により再実行を冪等化します。Fingerprint衝突、
+未知ステータス、解決できない重複元がある場合はapply全体を中止します。
+
+## 開発とテスト
+
+API:
+
+```bash
+cd apps/api
+python3 -m venv .venv
+.venv/bin/pip install -e '.[test]'
+.venv/bin/pytest
+```
+
+Web:
+
+```bash
+cd apps/web
+npm ci
+npm run lint
+npm test
+npm run build
+npm run test:e2e
+```
+
+`test:e2e`は起動済みのReview Hub（既定
+`http://127.0.0.1:8080`）を対象にします。別URLの場合は
+`PLAYWRIGHT_BASE_URL`を設定してください。
+
+マイグレーション:
+
+```bash
+cd apps/api
+REVIEW_HUB_DATABASE_URL=sqlite:////tmp/review-hub.db \
+  .venv/bin/alembic upgrade head
+```
+
+スキルを配布先へインストールする場合:
+
+```bash
+cp -R skills/manage-review-findings ~/.codex/skills/
+```
+
+## ディレクトリ
 
 ```text
-TaskManage/
-├── AGENTS.md
-├── README.md
+.
+├── apps/
+│   ├── api/       # FastAPI、SQLAlchemy、Alembic、Redmine移行
+│   └── web/       # Next.js管理画面
 ├── skills/
-│   └── manage-redmine-review-findings/
-│       ├── SKILL.md
-│       ├── agents/
-│       │   └── openai.yaml
-│       ├── config/
-│       │   ├── .gitignore
-│       │   └── redmine.example.json
-│       ├── scripts/
-│       │   ├── check_redmine_setup.py
-│       │   ├── manage_findings.py
-│       │   └── redmine_common.py
-│       └── references/
-│           ├── redmine-setup.md
-│           └── status-policy.md
-```
-
-| パス | 役割 |
-| --- | --- |
-| `SKILL.md` | Codexが従うレビュー・Redmine反映ワークフロー |
-| `agents/openai.yaml` | スキル一覧に表示する名称、説明、既定プロンプト |
-| `config/redmine.example.json` | Git管理するRedmine設定例 |
-| `config/redmine.json` | 利用者が作成するローカル設定。Git管理対象外 |
-| `scripts/check_redmine_setup.py` | Redmineのプロジェクト、トラッカー、ステータス、項目を確認 |
-| `scripts/manage_findings.py` | 指摘の照合、登録、更新、再オープン、結果集計 |
-| `scripts/redmine_common.py` | Fingerprint生成とRedmine REST API共通処理 |
-| `references/redmine-setup.md` | Redmine設定と入出力データの詳細 |
-| `references/status-policy.md` | ステータス別の処理規則 |
-
-コードレビューそのものはCodexが行うため、レビューエンジンやプロンプトは実装しません。
-
-## インストール
-
-配布先で、`skills/manage-redmine-review-findings`をCodexのskillsディレクトリへコピーします。
-
-```bash
-cp -R skills/manage-redmine-review-findings ~/.codex/skills/
-```
-
-インストール後は、プロンプトから`$manage-redmine-review-findings`を指定して使用できます。
-
-インストール後、`config/redmine.example.json`を`config/redmine.json`へコピーしてRedmine接続設定を記入します。APIキーも`redmine.json`へ保存できますが、ファイル権限を`600`にする必要があります。CIでは`REDMINE_API_KEY`環境変数を使用でき、設定ファイルより優先されます。設定例と入力形式は、[Redmine設定リファレンス](./skills/manage-redmine-review-findings/references/redmine-setup.md)を参照してください。
-
-レビュー処理の前には、読み取り専用の設定確認を毎回実行します。
-
-```bash
-python3 skills/manage-redmine-review-findings/scripts/check_redmine_setup.py
-```
-
-この確認はGETリクエストだけを使用し、前提項目が不足している場合や確認できない場合は、Redmineへ指摘を反映せず終了します。書き込み権限とワークフロー遷移権限はGETだけでは完全に確認できないため、実際の反映時にRedmineから拒否された場合は処理エラーとして扱います。
-
-## 開発時の確認
-
-```bash
-python3 -m py_compile \
-  skills/manage-redmine-review-findings/scripts/*.py
-python3 /path/to/skill-creator/scripts/quick_validate.py \
-  skills/manage-redmine-review-findings
+│   ├── manage-review-findings/
+│   └── manage-redmine-review-findings/  # 移行確認用
+├── Caddyfile
+└── compose.yaml
 ```

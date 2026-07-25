@@ -1,0 +1,75 @@
+import { expect, test } from "@playwright/test";
+
+test("findings, markdown, manual registration, transitions, and runs", async ({
+  page,
+  request,
+}) => {
+  const suffix = Date.now().toString();
+  const repository = `e2e/repository-${suffix}`;
+  const reconciliation = {
+    repository,
+    base_branch: "main",
+    target_branch: "feature/e2e",
+    commit_sha: suffix,
+    reviewed_file_count: 1,
+    review_source: "Codex",
+    detected_at: new Date().toISOString(),
+    findings: [
+      {
+        title: `Automated finding ${suffix}`,
+        description: "Evidence with **Markdown**.\n\n```python\nunsafe_call()\n```",
+        remediation: "Use `safe_call()`.",
+        severity: "High",
+        category: "Correctness",
+        rule_id: "E2E-AUTO-001",
+        file_path: "src/e2e.py",
+        symbol: "run",
+        line_number: 12,
+        code_context: "unsafe_call()",
+        code_language: "python",
+        ai_confidence: 95,
+      },
+    ],
+  };
+
+  const dryRun = await request.post("/api/v1/reconciliations/dry-run", {
+    data: reconciliation,
+  });
+  expect(dryRun.ok()).toBeTruthy();
+  expect((await dryRun.json()).results[0].action).toBe("would_create");
+
+  const apply = await request.post("/api/v1/reconciliations", {
+    data: reconciliation,
+    headers: { "Idempotency-Key": `${repository}:${suffix}:Codex` },
+  });
+  expect(apply.ok()).toBeTruthy();
+
+  await page.goto("/");
+  await expect(page.getByText(`Automated finding ${suffix}`)).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(`Automated finding ${suffix}`) }).click();
+  await expect(page.getByText("unsafe_call()").first()).toBeVisible();
+  await page.getByRole("button", { name: "Markdown" }).click();
+  await expect(page.getByText(/```python/)).toBeVisible();
+
+  await page.getByRole("button", { name: "有識者指摘" }).click();
+  await page.getByRole("textbox", { name: "Repository" }).fill(repository);
+  await page.getByRole("textbox", { name: "タイトル" }).fill(`Human finding ${suffix}`);
+  await page.getByRole("textbox", { name: "Rule ID" }).fill("E2E-HUMAN-001");
+  await page.getByRole("textbox", { name: "ファイルパス" }).fill("src/human.py");
+  await page.getByRole("textbox", { name: "シンボル" }).fill("check");
+  await page.getByRole("textbox", { name: "問題（Markdown）" }).fill("Human evidence");
+  await page.getByRole("textbox", { name: "修正案（Markdown）" }).fill("Fix it");
+  await page.getByRole("textbox", { name: "コードコンテキスト" }).fill("problem()");
+  await page.getByRole("button", { name: "登録", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: new RegExp(`Human finding ${suffix}`) }),
+  ).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept("E2E triage"));
+  const status = page.locator(".detail-panel").getByRole("combobox").first();
+  await status.selectOption("確認中");
+  await expect(status).toHaveValue("確認中");
+
+  await page.getByRole("button", { name: "レビュー実行" }).click();
+  await expect(page.getByText(repository).first()).toBeVisible();
+});

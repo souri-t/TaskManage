@@ -2,19 +2,22 @@
 
 ## Purpose
 
-このリポジトリでは、コードレビュー指摘をRedmineへ照合・反映するCodexスキルを配布する。
+このリポジトリでは、コードレビュー指摘をReview Hubへ照合・反映するシステムとCodexスキルを配布する。
 
 ## Required Skill
 
-コードレビュー結果をRedmineへ反映する場合は、`$manage-redmine-review-findings`を使用する。
+コードレビュー結果をReview Hubへ反映する場合は、`$manage-review-findings`を使用する。
 
 スキルがCodexへインストールされていない開発環境では、以下を読み、同じ手順に従う。
 
-- `skills/manage-redmine-review-findings/SKILL.md`
+- `skills/manage-review-findings/SKILL.md`
 
 レビュー観点とレビュー範囲は、リポジトリ内へ固定せず、その時点のユーザー指示に従う。
 
-処理規則、Redmine設定、ステータス別の扱いはスキル側を正本とし、このファイルへ重複して記載しない。
+処理規則、API契約、ステータス別の扱いはスキル側を正本とし、このファイルへ重複して記載しない。
+
+Redmine移行確認だけを行う場合は、移行期間中に限り
+`$manage-redmine-review-findings`を使用できる。
 
 ## Development
 
