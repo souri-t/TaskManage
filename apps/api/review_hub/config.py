@@ -6,7 +6,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/review-hub.db"
-    operator_name: str = "local-user"
     code_excerpt_max_lines: int = 50
     code_excerpt_max_bytes: int = 16 * 1024
 
@@ -29,4 +28,3 @@ def get_settings() -> Settings:
     settings = Settings()
     settings.ensure_data_directory()
     return settings
-

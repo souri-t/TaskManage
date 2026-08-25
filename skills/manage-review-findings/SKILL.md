@@ -39,8 +39,7 @@ review; Review Hub only validates, reconciles, and stores structured findings.
 - Do not alter descriptions or remediation text of an existing automatic
   finding during rediscovery; Review Hub preserves them.
 - Do not resolve semantic duplicate candidates automatically.
-- Use the Review Hub API directly. Do not call the legacy Redmine scripts except
-  for an explicitly requested migration check.
+- Use the Review Hub API directly for all reconciliation and registration.
 
 ## Output
 

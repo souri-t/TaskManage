@@ -8,9 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
-from .config import get_settings
 from .database import SessionLocal, get_session, write_lock
-from .domain import ALLOWED_TRANSITIONS
+from .domain import ALLOWED_TRANSITIONS, HUMAN_SOURCE
 from .models import (
     AuditEvent,
     Finding,
@@ -46,7 +45,6 @@ app.add_middleware(
 )
 
 DBSession = Annotated[Session, Depends(get_session)]
-settings = get_settings()
 
 
 def finding_dict(finding: Finding, repository_name: str) -> dict:
@@ -262,14 +260,14 @@ def transition_finding(
             )
         previous = finding.status
         finding.status = data.status
-        finding.updated_by = settings.operator_name
+        finding.updated_by = HUMAN_SOURCE
         add_audit(
             session,
             finding_id=finding.id,
             review_run_id=None,
             event_type="status_changed",
             actor_type="human",
-            actor_label=settings.operator_name,
+            actor_label=HUMAN_SOURCE,
             previous={"status": previous},
             resulting={"status": data.status},
             reason=data.reason,
@@ -323,19 +321,19 @@ def mark_duplicate(finding_id: str, data: DuplicateInput) -> dict:
                 source_finding_id=source.id,
                 target_finding_id=target.id,
                 relation_type="duplicate_of",
-                created_by=settings.operator_name,
+                created_by=HUMAN_SOURCE,
             )
         )
         previous_status = source.status
         source.status = "重複"
-        source.updated_by = settings.operator_name
+        source.updated_by = HUMAN_SOURCE
         add_audit(
             session,
             finding_id=source.id,
             review_run_id=None,
             event_type="marked_duplicate",
             actor_type="human",
-            actor_label=settings.operator_name,
+            actor_label=HUMAN_SOURCE,
             previous={"status": previous_status},
             resulting={"status": "重複", "target_finding_id": target.id},
             reason=data.reason,

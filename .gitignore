@@ -1,7 +1,6 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-skills/manage-redmine-review-findings/config/redmine.json
 .pytest_cache/
 .coverage
 htmlcov/

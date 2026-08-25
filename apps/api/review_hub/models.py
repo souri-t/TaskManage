@@ -120,9 +120,6 @@ class Finding(Base):
     detection_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     recurrence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     ai_confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    legacy_redmine_issue_id: Mapped[int | None] = mapped_column(
-        Integer, unique=True, nullable=True
-    )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     updated_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

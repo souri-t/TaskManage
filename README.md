@@ -39,7 +39,7 @@ flowchart LR
 Docker Compose v2が必要です。
 
 ```bash
-APP_OPERATOR_NAME=your-name docker compose up --build -d
+docker compose up --build -d
 ```
 
 - 管理画面: <http://127.0.0.1:8080/>
@@ -60,8 +60,53 @@ docker compose down
 
 ## Codexからの登録
 
-入力全体は[API契約](./skills/manage-review-findings/references/api-contract.md)を
-参照してください。本登録前に必ず同じJSONでdry-runします。
+CodexはReview Hubのコンテナ内で動かさず、レビュー対象のローカルGitリポジトリを
+開いたCodexから登録します。Review Hubが起動していることを確認したうえで、
+`$manage-review-findings`スキルを使用してください。
+
+### 初回だけスキルをインストール
+
+Codexがこのリポジトリ外で動く場合は、スキルをローカルのCodex環境へコピーします。
+
+```bash
+cp -R skills/manage-review-findings ~/.codex/skills/
+```
+
+### Codexへの指示例
+
+レビュー対象リポジトリをCodexで開き、次のように依頼します。`repository`はReview
+Hub上で表示・照合に使う論理名であり、ローカルパスではありません。同じリポジトリには
+常に同じ論理名を指定してください。
+
+```text
+$manage-review-findings を使って、現在開いているリポジトリをレビューしてください。
+
+- Review Hubのrepository名: example/backend
+- 比較元ブランチ: main
+- 比較先ブランチ: feature/payment
+- レビュー範囲: mainとの差分
+- 観点: 正しさ、セキュリティ、回帰リスク
+
+指摘をReview Hubへ登録してください。ready確認、dry-run、本登録の順で実行し、
+最後に登録結果（作成・更新・再発・抑止・エラー）を報告してください。
+```
+
+特定のファイルだけを対象にする場合は、レビュー範囲を例えば
+`src/payments/`の変更だけ、と指定します。Hubへ保存するのは指摘と論理的な
+リポジトリ名であり、ローカルのGitパスは保存しません。
+
+### Codexが行う登録手順
+
+スキルは以下の順序でAPIを利用します。入力全体は
+[API契約](./skills/manage-review-findings/references/api-contract.md)を参照してください。
+
+1. `GET /readyz`でHubとSQLiteの準備完了を確認する。
+2. レビュー結果を構造化JSONにし、`POST /api/v1/reconciliations/dry-run`へ送る。
+3. 予定される作成・更新・再発・有識者抑止・エラーを確認する。
+4. 同じJSONを`Idempotency-Key`付きで`POST /api/v1/reconciliations`へ送る。
+5. 処理結果を開発者へ報告する。
+
+本登録前に必ず同じJSONでdry-runします。
 
 ```bash
 curl --fail-with-body \
@@ -111,24 +156,6 @@ SQLiteからPostgreSQLへ切り替える目安は、複数人利用、APIの複�
 継続的な並行登録、Lock外の`database is locked`、複雑な全文検索や外部BIが
 必要になった場合です。
 
-## Redmineからの一度限りの移行
-
-移行はAPIサービスを停止した状態で実行します。設定形式は既存Redmineスキルの
-`config/redmine.example.json`を利用できます。
-
-```bash
-docker compose stop api
-docker compose run --rm api redmine-import \
-  --config /path/in/container/redmine.json --dry-run
-docker compose run --rm api redmine-import \
-  --config /path/in/container/redmine.json --apply
-docker compose start api
-```
-
-実ファイルを渡す場合は`docker compose run`へ読み取り専用volume指定を追加して
-ください。`legacy_redmine_issue_id`により再実行を冪等化します。Fingerprint衝突、
-未知ステータス、解決できない重複元がある場合はapply全体を中止します。
-
 ## 開発とテスト
 
 API:
@@ -163,22 +190,15 @@ REVIEW_HUB_DATABASE_URL=sqlite:////tmp/review-hub.db \
   .venv/bin/alembic upgrade head
 ```
 
-スキルを配布先へインストールする場合:
-
-```bash
-cp -R skills/manage-review-findings ~/.codex/skills/
-```
-
 ## ディレクトリ
 
 ```text
 .
 ├── apps/
-│   ├── api/       # FastAPI、SQLAlchemy、Alembic、Redmine移行
+│   ├── api/       # FastAPI、SQLAlchemy、Alembic
 │   └── web/       # Next.js管理画面
 ├── skills/
-│   ├── manage-review-findings/
-│   └── manage-redmine-review-findings/  # 移行確認用
+│   └── manage-review-findings/
 ├── Caddyfile
 └── compose.yaml
 ```

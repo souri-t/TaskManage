@@ -529,7 +529,6 @@ def build_response(
 def create_manual_finding(
     session: Session, data: ManualFindingInput
 ) -> Finding:
-    settings = get_settings()
     repository = get_or_create_repository(session, data.repository)
     candidates = duplicate_candidates(session, repository.id, data)
     detected_at = data.detected_at or datetime.now().astimezone()
@@ -557,8 +556,8 @@ def create_manual_finding(
         detection_count=1,
         recurrence_count=0,
         ai_confidence=None,
-        created_by=settings.operator_name,
-        updated_by=settings.operator_name,
+        created_by=HUMAN_SOURCE,
+        updated_by=HUMAN_SOURCE,
     )
     session.add(finding)
     session.flush()
@@ -568,7 +567,7 @@ def create_manual_finding(
         review_run_id=None,
         event_type="created",
         actor_type="human",
-        actor_label=settings.operator_name,
+        actor_label=HUMAN_SOURCE,
         resulting={"status": finding.status},
     )
     for candidate in candidates:
@@ -577,7 +576,7 @@ def create_manual_finding(
                 source_finding_id=finding.id,
                 target_finding_id=candidate.id,
                 relation_type="duplicate_candidate",
-                created_by=settings.operator_name,
+                created_by=HUMAN_SOURCE,
             )
         )
     return finding

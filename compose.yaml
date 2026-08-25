@@ -29,7 +29,6 @@ services:
     restart: unless-stopped
     environment:
       REVIEW_HUB_DATABASE_URL: sqlite:////data/review-hub.db
-      REVIEW_HUB_OPERATOR_NAME: ${APP_OPERATOR_NAME:-local-user}
     expose:
       - "8000"
     volumes:
