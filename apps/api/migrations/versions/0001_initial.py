@@ -13,9 +13,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    Base.metadata.create_all(bind=op.get_bind())
+    Base.metadata.create_all(
+        bind=op.get_bind(),
+        tables=[
+            table
+            for table in Base.metadata.sorted_tables
+            if table.name != "review_guidelines"
+        ],
+    )
 
 
 def downgrade() -> None:
     Base.metadata.drop_all(bind=op.get_bind())
-

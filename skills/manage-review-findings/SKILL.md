@@ -12,26 +12,32 @@ review; Review Hub only validates, reconciles, and stores structured findings.
 
 1. Read the repository instructions and the user's requested review scope and
    viewpoints. Do not invent or persist a fixed review scope.
-2. Inspect the requested code and produce only actionable findings supported by
+2. Read the requested review guideline through
+   `GET /api/v1/review-guidelines/{review_guideline_id}`. Stop when the ID does
+   not exist or is inactive. Use its Markdown content as the standard review
+   viewpoints, together with only the user's explicit additional viewpoints.
+3. Inspect the requested code and produce only actionable findings supported by
    concrete evidence. Include every required field from
    [references/api-contract.md](references/api-contract.md).
-3. Check `GET http://127.0.0.1:8080/readyz`. Stop without applying when it is not
+4. Check `GET http://127.0.0.1:8080/readyz`. Stop without applying when it is not
    ready.
-4. Send the complete payload to
+5. Send the complete payload, including `review_guideline_id`, to
    `POST /api/v1/reconciliations/dry-run`. This call is mandatory and must occur
    immediately before apply.
-5. Inspect every dry-run result. Report validation errors, skips, human
+6. Inspect every dry-run result. Report validation errors, skips, human
    suppressions, and duplicate candidates. Do not override a human finding.
-6. If the user asked to register the results and dry-run is acceptable, send the
+7. If the user asked to register the results and dry-run is acceptable, send the
    identical payload to `POST /api/v1/reconciliations` with an
    `Idempotency-Key` of
    `<repository>:<commit-sha>:<review-source>`.
-7. Compare the applied result with the dry-run and report created, updated,
+8. Compare the applied result with the dry-run and report created, updated,
    reopened, suppressed, skipped, and failed findings.
 
 ## Safety Rules
 
 - Never send a write request before a successful ready check and dry-run.
+- Never substitute a review guideline ID. Ask for one when the user did not
+  provide it.
 - Reuse the same idempotency key for retries of the same review.
 - Do not log or persist the unredacted request body. The API redacts and limits
   `code_context` after calculating its fingerprint.

@@ -821,6 +821,43 @@ button {
   overflow: hidden;
 }
 
+.guidelines-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.guidelines-panel .panel-heading {
+  margin: 0;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.guidelines-panel .panel-heading p,
+.guideline-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.guideline-row {
+  display: flex;
+  width: 100%;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.guideline-row:hover { background: var(--surface-subtle); }
+.guideline-row strong { display: block; margin-top: 4px; }
+.guideline-active { background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--green); }
+
 .runs-panel .panel-heading {
   margin: 0;
   padding: 15px 16px;

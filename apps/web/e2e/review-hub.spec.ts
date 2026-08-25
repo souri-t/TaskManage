@@ -6,8 +6,17 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
 }) => {
   const suffix = Date.now().toString();
   const repository = `e2e/repository-${suffix}`;
+  const createGuideline = await request.post("/api/v1/review-guidelines", {
+    data: {
+      title: `E2E guideline ${suffix}`,
+      content_markdown: "- Correctness\n- Security",
+    },
+  });
+  expect(createGuideline.ok()).toBeTruthy();
+  const reviewGuidelineId = (await createGuideline.json()).display_id;
   const reconciliation = {
     repository,
+    review_guideline_id: reviewGuidelineId,
     base_branch: "main",
     target_branch: "feature/e2e",
     commit_sha: suffix,

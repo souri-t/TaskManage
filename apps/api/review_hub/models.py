@@ -41,6 +41,27 @@ class Repository(Base):
     findings: Mapped[list[Finding]] = relationship(back_populates="repository")
 
 
+class ReviewGuideline(Base):
+    __tablename__ = "review_guidelines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    sequence: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    @property
+    def display_id(self) -> str:
+        return f"RVG-{self.sequence:06d}"
+
+
 class ReviewRun(Base):
     __tablename__ = "review_runs"
 
@@ -59,6 +80,13 @@ class ReviewRun(Base):
         DateTime(timezone=True), nullable=False
     )
     reviewed_file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    review_guideline_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    review_guideline_display_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    review_guideline_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    review_guideline_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_guideline_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="running", nullable=False)
     summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

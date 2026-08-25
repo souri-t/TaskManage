@@ -72,6 +72,14 @@ Codexがこのリポジトリ外で動く場合は、スキルをローカルの
 cp -R skills/manage-review-findings ~/.codex/skills/
 ```
 
+### レビュー観点を登録する
+
+管理画面のサイドバーで**レビュー観点**を開き、**観点を追加**からタイトルと
+Markdown形式の観点本文を登録します。保存すると `RVG-000001` のような観点IDが発行されます。
+このIDをレビュー依頼に含めてください。観点を編集するとバージョンが上がり、各レビュー履歴には
+実際に使用したID・バージョン・本文がスナップショットとして残ります。不要になった観点は
+無効化できますが、無効なIDでは新しいCodexレビューを登録できません。
+
 ### Codexへの指示例
 
 レビュー対象リポジトリをCodexで開き、次のように依頼します。`repository`はReview
@@ -82,12 +90,14 @@ Hub上で表示・照合に使う論理名であり、ローカルパスでは�
 $manage-review-findings を使って、現在開いているリポジトリをレビューしてください。
 
 - Review Hubのrepository名: example/backend
+- 使用するレビュー観点ID: RVG-000003
 - 比較元ブランチ: main
 - 比較先ブランチ: feature/payment
 - レビュー範囲: mainとの差分
 - 観点: 正しさ、セキュリティ、回帰リスク
 
-指摘をReview Hubへ登録してください。ready確認、dry-run、本登録の順で実行し、
+Review Hubから観点ID RVG-000003 を取得してレビューに使用してください。指摘を
+Review Hubへ登録してください。ready確認、dry-run、本登録の順で実行し、
 最後に登録結果（作成・更新・再発・抑止・エラー）を報告してください。
 ```
 
@@ -100,11 +110,12 @@ $manage-review-findings を使って、現在開いているリポジトリを�
 スキルは以下の順序でAPIを利用します。入力全体は
 [API契約](./skills/manage-review-findings/references/api-contract.md)を参照してください。
 
-1. `GET /readyz`でHubとSQLiteの準備完了を確認する。
-2. レビュー結果を構造化JSONにし、`POST /api/v1/reconciliations/dry-run`へ送る。
-3. 予定される作成・更新・再発・有識者抑止・エラーを確認する。
-4. 同じJSONを`Idempotency-Key`付きで`POST /api/v1/reconciliations`へ送る。
-5. 処理結果を開発者へ報告する。
+1. `GET /api/v1/review-guidelines/{ID}`で有効なレビュー観点を取得する。
+2. `GET /readyz`でHubとSQLiteの準備完了を確認する。
+3. レビュー結果と観点IDを構造化JSONにし、`POST /api/v1/reconciliations/dry-run`へ送る。
+4. 予定される作成・更新・再発・有識者抑止・エラーを確認する。
+5. 同じJSONを`Idempotency-Key`付きで`POST /api/v1/reconciliations`へ送る。
+6. 処理結果を開発者へ報告する。
 
 本登録前に必ず同じJSONでdry-runします。
 
@@ -127,6 +138,8 @@ curl --fail-with-body \
 主なAPI:
 
 - `GET /api/v1/repositories`（レビュー入力から自動登録されたリポジトリ）
+- `GET /api/v1/review-guidelines`、`GET /api/v1/review-guidelines/{ID}`
+- `POST /api/v1/review-guidelines`、`PATCH /api/v1/review-guidelines/{ID}`（レビュー観点の管理）
 - `GET /api/v1/findings`、`GET /api/v1/findings/{id}`
 - `GET /api/v1/findings/{id}/timeline`
 - `POST /api/v1/findings`（有識者指摘）

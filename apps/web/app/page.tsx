@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDot,
+  ClipboardList,
   FileCode2,
   Gauge,
   ListChecks,
@@ -16,9 +17,9 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { MarkdownView } from "./markdown-view";
-import type { Finding, RepositoryOption, ReviewRun, TimelineEvent } from "./types";
+import type { Finding, RepositoryOption, ReviewGuideline, ReviewRun, TimelineEvent } from "./types";
 
-type View = "dashboard" | "findings" | "runs";
+type View = "dashboard" | "findings" | "runs" | "guidelines";
 type Dashboard = {
   open: number;
   critical_high: number;
@@ -96,6 +97,7 @@ export default function Home() {
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [runs, setRuns] = useState<ReviewRun[]>([]);
   const [repositories, setRepositories] = useState<RepositoryOption[]>([]);
+  const [guidelines, setGuidelines] = useState<ReviewGuideline[]>([]);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [search, setSearch] = useState("");
   const [repositoryFilter, setRepositoryFilter] = useState("");
@@ -104,6 +106,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
+  const [guidelineOpen, setGuidelineOpen] = useState(false);
+  const [editingGuideline, setEditingGuideline] = useState<ReviewGuideline | null>(null);
 
   const loadFindings = useCallback(async () => {
     const params = new URLSearchParams({ per_page: "100" });
@@ -127,15 +131,17 @@ export default function Home() {
     setLoading(true);
     setError("");
     try {
-      const [summary, runPayload, repositoryPayload] = await Promise.all([
+      const [summary, runPayload, repositoryPayload, guidelinePayload] = await Promise.all([
         api<Dashboard>("/api/v1/dashboard/summary"),
         api<{ items: ReviewRun[] }>("/api/v1/review-runs?per_page=25"),
         api<{ items: RepositoryOption[] }>("/api/v1/repositories"),
+        api<{ items: ReviewGuideline[] }>("/api/v1/review-guidelines?include_inactive=true"),
         loadFindings(),
       ]);
       setDashboard(summary);
       setRuns(runPayload.items);
       setRepositories(repositoryPayload.items);
+      setGuidelines(guidelinePayload.items);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "読み込みに失敗しました");
     } finally {
@@ -195,6 +201,7 @@ export default function Home() {
     dashboard: "ダッシュボード",
     findings: "指摘一覧",
     runs: "レビュー履歴",
+    guidelines: "レビュー観点",
   }[view];
 
   return (
@@ -214,6 +221,9 @@ export default function Home() {
         <button className={view === "runs" ? "nav active" : "nav"} onClick={() => setView("runs")}>
           <RefreshCw size={17} />レビュー履歴
         </button>
+        <button className={view === "guidelines" ? "nav active" : "nav"} onClick={() => setView("guidelines")}>
+          <ClipboardList size={17} />レビュー観点
+        </button>
         <div className="sidebar-spacer" />
         <div className="local-note">
           <CircleDot size={14} />
@@ -231,8 +241,15 @@ export default function Home() {
             <button className="icon-button" onClick={() => void refresh()} aria-label="更新">
               <RefreshCw size={17} />
             </button>
-            <button className="primary-button" onClick={() => setManualOpen(true)}>
-              <Plus size={17} />有識者指摘
+            <button className="primary-button" onClick={() => {
+              if (view === "guidelines") {
+                setEditingGuideline(null);
+                setGuidelineOpen(true);
+              } else {
+                setManualOpen(true);
+              }
+            }}>
+              <Plus size={17} />{view === "guidelines" ? "観点を追加" : "有識者指摘"}
             </button>
           </div>
         </header>
@@ -263,6 +280,12 @@ export default function Home() {
           />
         )}
         {view === "runs" && <RunsView runs={runs} />}
+        {view === "guidelines" && (
+          <GuidelinesView guidelines={guidelines} onEdit={(guideline) => {
+            setEditingGuideline(guideline);
+            setGuidelineOpen(true);
+          }} />
+        )}
       </main>
 
       {manualOpen && (
@@ -272,6 +295,16 @@ export default function Home() {
             setManualOpen(false);
             await refresh();
             setView("findings");
+          }}
+        />
+      )}
+      {guidelineOpen && (
+        <GuidelineModal
+          guideline={editingGuideline}
+          onClose={() => setGuidelineOpen(false)}
+          onSaved={async () => {
+            setGuidelineOpen(false);
+            await refresh();
           }}
         />
       )}
@@ -543,13 +576,14 @@ function RunsView({ runs }: { runs: ReviewRun[] }) {
         <div className="panel-heading"><h2>レビュー履歴</h2><span>{runs.length}件</span></div>
         <div className="runs-table-wrap">
           <table className="runs-table">
-            <thead><tr><th>対象</th><th>Commit</th><th>生成元</th><th>ファイル</th><th>検出</th><th>結果</th></tr></thead>
+            <thead><tr><th>対象</th><th>Commit</th><th>観点</th><th>生成元</th><th>ファイル</th><th>検出</th><th>結果</th></tr></thead>
             <tbody>
               {runs.map((run) => (
-                <tr key={run.id}>
-                  <td><strong>{run.target_branch}</strong><span>{run.repository}</span></td>
-                  <td><code>{run.commit_sha.slice(0, 10)}</code></td>
-                  <td>{run.review_source}</td>
+              <tr key={run.id}>
+              <td><strong>{run.target_branch}</strong><span>{run.repository}</span></td>
+              <td><code>{run.commit_sha.slice(0, 10)}</code></td>
+              <td>{run.review_guideline ? <><strong>{run.review_guideline.display_id}</strong><span>{run.review_guideline.title} v{run.review_guideline.version}</span></> : "未設定"}</td>
+              <td>{run.review_source}</td>
                   <td>{run.reviewed_file_count}</td>
                   <td>{String(run.summary.detected || 0)}</td>
                   <td><span className="badge">{run.status}</span><time>{formatDate(run.detected_at)}</time></td>
@@ -561,6 +595,59 @@ function RunsView({ runs }: { runs: ReviewRun[] }) {
         </div>
       </article>
     </section>
+  );
+}
+
+function GuidelinesView({ guidelines, onEdit }: { guidelines: ReviewGuideline[]; onEdit: (guideline: ReviewGuideline) => void }) {
+  return (
+    <section className="content">
+      <article className="panel guidelines-panel">
+        <div className="panel-heading"><div><h2>レビュー観点</h2><p>Codexへ指定するIDと、実際に使用するMarkdownの観点を管理します。</p></div><span>{guidelines.length}件</span></div>
+        <div className="guideline-list">
+          {guidelines.map((guideline) => (
+            <button className="guideline-row" key={guideline.id} onClick={() => onEdit(guideline)}>
+              <div><span className="finding-id">{guideline.display_id} · v{guideline.version}</span><strong>{guideline.title}</strong><p>{guideline.content_markdown.slice(0, 180)}</p></div>
+              <span className={guideline.is_active ? "badge guideline-active" : "badge"}>{guideline.is_active ? "有効" : "無効"}</span>
+            </button>
+          ))}
+          {!guidelines.length && <p className="empty">レビュー観点はまだありません。右上から追加してください。</p>}
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function GuidelineModal({ guideline, onClose, onSaved }: { guideline: ReviewGuideline | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [title, setTitle] = useState(guideline?.title || "");
+  const [content, setContent] = useState(guideline?.content_markdown || "");
+  const [active, setActive] = useState(guideline?.is_active ?? true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      await api(guideline ? `/api/v1/review-guidelines/${guideline.display_id}` : "/api/v1/review-guidelines", {
+        method: guideline ? "PATCH" : "POST",
+        body: JSON.stringify({ title, content_markdown: content, is_active: active }),
+      });
+      await onSaved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "保存に失敗しました");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop" role="presentation"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="guideline-title">
+      <div className="modal-header"><div><span>{guideline ? guideline.display_id : "レビュー観点"}</span><h2 id="guideline-title">{guideline ? "レビュー観点を編集" : "レビュー観点を追加"}</h2></div><button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={18} /></button></div>
+      <form onSubmit={submit}><div className="form-grid">
+        <label className="wide"><span>名称</span><input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例: バックエンド標準レビュー" /></label>
+        <label className="wide"><span>観点（Markdown）</span><textarea required rows={14} value={content} onChange={(event) => setContent(event.target.value)} placeholder={"## 必須観点\n\n- 認可・認証\n- 例外処理\n- 回帰リスク"} /></label>
+        <label><span>状態</span><select value={active ? "active" : "inactive"} onChange={(event) => setActive(event.target.value === "active")}><option value="active">有効</option><option value="inactive">無効</option></select></label>
+      </div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>キャンセル</button><button className="primary-button" disabled={submitting}>{submitting ? "保存中…" : "保存"}</button></div></form>
+    </div></div>
   );
 }
 

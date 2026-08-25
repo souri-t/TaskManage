@@ -20,6 +20,7 @@ def payload(code_context: str = "value = lookup(key)\nreturn value.name") -> dic
         "commit_sha": "0123456789abcdef",
         "reviewed_file_count": 1,
         "review_source": "Codex",
+        "review_guideline_id": "RVG-000001",
         "detected_at": "2026-07-25T12:00:00+09:00",
         "findings": [
             {
@@ -47,6 +48,38 @@ def test_health_and_ready():
     assert ready.json()["database"] == "sqlite"
 
 
+def test_review_guideline_can_be_created_updated_and_retrieved():
+    created = client.post(
+        "/api/v1/review-guidelines",
+        json={"title": "決済レビュー", "content_markdown": "- 金額\n- 冪等性"},
+    )
+    assert created.status_code == 201
+    guideline = created.json()
+    assert guideline["display_id"] == "RVG-000002"
+    assert guideline["version"] == 1
+
+    updated = client.patch(
+        f"/api/v1/review-guidelines/{guideline['display_id']}",
+        json={"content_markdown": "- 金額\n- 冪等性\n- 認可"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["version"] == 2
+
+    fetched = client.get(f"/api/v1/review-guidelines/{guideline['display_id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["content_markdown"].endswith("認可")
+
+
+def test_inactive_guideline_cannot_be_used_for_review():
+    disabled = client.patch(
+        "/api/v1/review-guidelines/RVG-000001",
+        json={"is_active": False},
+    )
+    assert disabled.status_code == 200
+    dry_run = client.post("/api/v1/reconciliations/dry-run", json=payload())
+    assert dry_run.status_code == 422
+
+
 def test_dry_run_has_no_database_writes():
     response = client.post("/api/v1/reconciliations/dry-run", json=payload())
     assert response.status_code == 200
@@ -60,6 +93,16 @@ def test_apply_is_idempotent_and_reopens_fixed():
     first = client.post("/api/v1/reconciliations", json=payload(), headers=headers)
     assert first.status_code == 200
     assert first.json()["summary"]["created"] == 1
+    assert first.json()["review_run_id"]
+    review_run = client.get(f"/api/v1/review-runs/{first.json()['review_run_id']}")
+    assert review_run.status_code == 200
+    assert review_run.json()["review_guideline"] == {
+        "id": review_run.json()["review_guideline"]["id"],
+        "display_id": "RVG-000001",
+        "title": "テスト標準観点",
+        "version": 1,
+        "content_markdown": "- 正しさ\n- セキュリティ",
+    }
     second = client.post("/api/v1/reconciliations", json=payload(), headers=headers)
     assert second.json() == first.json()
 

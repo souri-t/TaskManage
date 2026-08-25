@@ -43,6 +43,12 @@ export type ReviewRun = {
   reviewed_file_count: number;
   status: string;
   summary: Record<string, number | string>;
+  review_guideline: {
+    id: string;
+    display_id: string;
+    title: string;
+    version: number;
+  } | null;
 };
 
 export type RepositoryOption = {
@@ -50,4 +56,15 @@ export type RepositoryOption = {
   name: string;
   display_name: string;
   finding_count: number;
+};
+
+export type ReviewGuideline = {
+  id: string;
+  display_id: string;
+  title: string;
+  content_markdown: string;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };

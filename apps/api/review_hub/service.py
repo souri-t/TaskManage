@@ -24,6 +24,7 @@ from .models import (
     FindingOccurrence,
     FindingRelation,
     Repository,
+    ReviewGuideline,
     ReviewRun,
     ReviewRunResult,
 )
@@ -46,6 +47,26 @@ def get_or_create_repository(session: Session, name: str) -> Repository:
 
 def next_sequence(session: Session) -> int:
     return int(session.scalar(select(func.max(Finding.sequence))) or 0) + 1
+
+
+def next_guideline_sequence(session: Session) -> int:
+    return int(session.scalar(select(func.max(ReviewGuideline.sequence))) or 0) + 1
+
+
+def active_guideline(session: Session, display_id: str) -> ReviewGuideline:
+    guideline = next(
+        (
+            item
+            for item in session.scalars(
+                select(ReviewGuideline).where(ReviewGuideline.is_active.is_(True))
+            )
+            if item.display_id == display_id
+        ),
+        None,
+    )
+    if guideline is None:
+        raise ServiceError("有効なレビュー観点IDが見つかりません")
+    return guideline
 
 
 def exact_finding(
@@ -174,6 +195,7 @@ def evaluate_finding(
 
 
 def dry_run(session: Session, payload: ReconciliationInput) -> dict[str, Any]:
+    active_guideline(session, payload.review_guideline_id)
     repository = session.scalar(
         select(Repository).where(Repository.name == payload.repository)
     )
@@ -410,6 +432,7 @@ def apply_reconciliation(
             return stored
         with session.begin():
             repository = get_or_create_repository(session, payload.repository)
+            guideline = active_guideline(session, payload.review_guideline_id)
             run = ReviewRun(
                 repository_id=repository.id,
                 idempotency_key=idempotency_key,
@@ -419,6 +442,11 @@ def apply_reconciliation(
                 review_source=payload.review_source,
                 detected_at=payload.detected_at,
                 reviewed_file_count=payload.reviewed_file_count,
+                review_guideline_id=guideline.id,
+                review_guideline_display_id=guideline.display_id,
+                review_guideline_title=guideline.title,
+                review_guideline_version=guideline.version,
+                review_guideline_markdown=guideline.content_markdown,
             )
             session.add(run)
             session.flush()

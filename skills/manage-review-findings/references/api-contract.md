@@ -14,6 +14,7 @@ Send JSON with these top-level fields:
 | `commit_sha` | string | Reviewed commit |
 | `reviewed_file_count` | integer | Non-negative |
 | `review_source` | string | Normally `Codex` |
+| `review_guideline_id` | string | Active guideline display ID, such as `RVG-000001` |
 | `detected_at` | ISO 8601 datetime | Include timezone |
 | `findings` | array | May be empty |
 
@@ -34,6 +35,7 @@ normalized paths. Markdown, including fenced code blocks, is accepted in
   "commit_sha": "0123456789abcdef",
   "reviewed_file_count": 1,
   "review_source": "Codex",
+  "review_guideline_id": "RVG-000001",
   "detected_at": "2026-07-25T12:00:00+09:00",
   "findings": [
     {
@@ -55,6 +57,14 @@ normalized paths. Markdown, including fenced code blocks, is accepted in
 ```
 
 ## Requests
+
+Retrieve the guideline before reviewing. A `200` response with `is_active: true`
+is required; otherwise do not review or register findings.
+
+```bash
+curl --fail --silent \
+  http://127.0.0.1:8080/api/v1/review-guidelines/RVG-000001
+```
 
 Check readiness:
 

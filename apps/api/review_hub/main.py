@@ -15,6 +15,7 @@ from .models import (
     Finding,
     FindingRelation,
     Repository,
+    ReviewGuideline,
     ReviewRun,
     ReviewRunResult,
 )
@@ -22,6 +23,8 @@ from .schemas import (
     DuplicateInput,
     ManualFindingInput,
     ReconciliationInput,
+    ReviewGuidelineInput,
+    ReviewGuidelineUpdate,
     TransitionInput,
 )
 from .service import (
@@ -29,6 +32,8 @@ from .service import (
     apply_reconciliation,
     create_manual_finding,
     dry_run,
+    next_guideline_sequence,
+    ServiceError,
 )
 
 
@@ -75,6 +80,19 @@ def finding_dict(finding: Finding, repository_name: str) -> dict:
     }
 
 
+def guideline_dict(guideline: ReviewGuideline) -> dict:
+    return {
+        "id": guideline.id,
+        "display_id": guideline.display_id,
+        "title": guideline.title,
+        "content_markdown": guideline.content_markdown,
+        "version": guideline.version,
+        "is_active": guideline.is_active,
+        "created_at": guideline.created_at,
+        "updated_at": guideline.updated_at,
+    }
+
+
 @app.get("/healthz")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -96,7 +114,80 @@ def ready(session: DBSession) -> dict[str, str]:
 def reconciliation_dry_run(
     payload: ReconciliationInput, session: DBSession
 ) -> dict:
-    return dry_run(session, payload)
+    try:
+        return dry_run(session, payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/review-guidelines")
+def list_review_guidelines(
+    session: DBSession, include_inactive: bool = False
+) -> dict:
+    query = select(ReviewGuideline).order_by(ReviewGuideline.sequence.desc())
+    if not include_inactive:
+        query = query.where(ReviewGuideline.is_active.is_(True))
+    return {"items": [guideline_dict(item) for item in session.scalars(query)]}
+
+
+@app.get("/api/v1/review-guidelines/{display_id}")
+def get_review_guideline(display_id: str, session: DBSession) -> dict:
+    guideline = next(
+        (
+            item
+            for item in session.scalars(select(ReviewGuideline))
+            if item.display_id == display_id
+        ),
+        None,
+    )
+    if guideline is None:
+        raise HTTPException(status_code=404, detail="review guideline not found")
+    return guideline_dict(guideline)
+
+
+@app.post("/api/v1/review-guidelines", status_code=201)
+def create_review_guideline(data: ReviewGuidelineInput) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        guideline = ReviewGuideline(
+            sequence=next_guideline_sequence(session),
+            title=data.title,
+            content_markdown=data.content_markdown,
+            is_active=data.is_active,
+        )
+        session.add(guideline)
+        session.flush()
+        result = guideline_dict(guideline)
+    return result
+
+
+@app.patch("/api/v1/review-guidelines/{display_id}")
+def update_review_guideline(display_id: str, data: ReviewGuidelineUpdate) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        guideline = next(
+            (
+                item
+                for item in session.scalars(select(ReviewGuideline))
+                if item.display_id == display_id
+            ),
+            None,
+        )
+        if guideline is None:
+            raise HTTPException(status_code=404, detail="review guideline not found")
+        content_changed = (
+            data.content_markdown is not None
+            and data.content_markdown != guideline.content_markdown
+        )
+        if data.title is not None:
+            guideline.title = data.title
+        if data.content_markdown is not None:
+            guideline.content_markdown = data.content_markdown
+        if data.is_active is not None:
+            guideline.is_active = data.is_active
+        if content_changed:
+            guideline.version += 1
+        session.flush()
+        result = guideline_dict(guideline)
+    return result
 
 
 @app.post("/api/v1/reconciliations")
@@ -109,7 +200,10 @@ def reconciliation_apply(
     if len(idempotency_key) > 512:
         raise HTTPException(status_code=400, detail="Idempotency-Key is too long")
     with write_lock:
-        return apply_reconciliation(SessionLocal, payload, idempotency_key)
+        try:
+            return apply_reconciliation(SessionLocal, payload, idempotency_key)
+        except ServiceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/findings")
@@ -374,6 +468,16 @@ def list_review_runs(
                 "review_source": run.review_source,
                 "detected_at": run.detected_at,
                 "reviewed_file_count": run.reviewed_file_count,
+                "review_guideline": (
+                    {
+                        "id": run.review_guideline_id,
+                        "display_id": run.review_guideline_display_id,
+                        "title": run.review_guideline_title,
+                        "version": run.review_guideline_version,
+                    }
+                    if run.review_guideline_id
+                    else None
+                ),
                 "status": run.status,
                 "summary": run.summary,
             }
@@ -401,6 +505,17 @@ def get_review_run(run_id: str, session: DBSession) -> dict:
         "id": run.id,
         "status": run.status,
         "summary": run.summary,
+        "review_guideline": (
+            {
+                "id": run.review_guideline_id,
+                "display_id": run.review_guideline_display_id,
+                "title": run.review_guideline_title,
+                "version": run.review_guideline_version,
+                "content_markdown": run.review_guideline_markdown,
+            }
+            if run.review_guideline_id
+            else None
+        ),
         "results": [{**item.details, "index": item.finding_index} for item in results],
     }
 

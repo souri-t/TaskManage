@@ -42,6 +42,7 @@ class ReconciliationInput(BaseModel):
     commit_sha: str = Field(min_length=1, max_length=128)
     reviewed_file_count: int = Field(ge=0)
     review_source: Literal["Codex", "静的解析"]
+    review_guideline_id: str = Field(min_length=4, max_length=32)
     detected_at: datetime
     findings: list[FindingInput]
 
@@ -81,6 +82,28 @@ class TransitionInput(BaseModel):
 class DuplicateInput(BaseModel):
     target_finding_id: str
     reason: str = Field(min_length=1, max_length=5000)
+
+
+class ReviewGuidelineInput(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    content_markdown: str = Field(min_length=1, max_length=100_000)
+    is_active: bool = True
+
+
+class ReviewGuidelineUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content_markdown: str | None = Field(default=None, min_length=1, max_length=100_000)
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def has_change(self) -> ReviewGuidelineUpdate:
+        if (
+            self.title is None
+            and self.content_markdown is None
+            and self.is_active is None
+        ):
+            raise ValueError("更新する項目を指定してください")
+        return self
 
 
 class OrmModel(BaseModel):
