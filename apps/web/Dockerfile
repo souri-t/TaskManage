@@ -3,6 +3,16 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
 
+FROM node:24.9.0-alpine AS development
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
 FROM node:24.9.0-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,4 +33,3 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]
-

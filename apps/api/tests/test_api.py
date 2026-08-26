@@ -316,3 +316,14 @@ def test_apply_stores_only_redacted_bounded_code_excerpt():
         assert "[REDACTED]" in finding.code_excerpt
         assert len(finding.code_excerpt.splitlines()) <= 50
         assert len(finding.code_excerpt.encode("utf-8")) <= 16 * 1024
+
+
+def test_manual_finding_can_omit_line_number():
+    manual = {
+        **payload()["findings"][0],
+        "repository": "example/repository",
+    }
+    manual.pop("line_number")
+    response = client.post("/api/v1/findings", json=manual)
+    assert response.status_code == 201
+    assert response.json()["line_number"] is None

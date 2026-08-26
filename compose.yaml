@@ -17,15 +17,21 @@ services:
   web:
     build:
       context: ./apps/web
+      target: development
     restart: unless-stopped
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
     expose:
       - "3000"
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
 
   api:
     build:
       context: ./apps/api
+      target: development
     restart: unless-stopped
     environment:
       REVIEW_HUB_DATABASE_URL: sqlite:////data/review-hub.db
@@ -33,6 +39,7 @@ services:
       - "8000"
     volumes:
       - ./data:/data
+      - ./apps/api:/app
     healthcheck:
       test:
         - CMD
@@ -43,3 +50,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+volumes:
+  web_node_modules:
+  web_next:

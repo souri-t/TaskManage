@@ -10,7 +10,7 @@ export type Finding = {
   rule_id: string;
   file_path: string;
   symbol: string;
-  line_number: number;
+  line_number: number | null;
   fingerprint: string | null;
   status: string;
   review_source: string;

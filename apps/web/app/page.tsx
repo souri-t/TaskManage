@@ -80,6 +80,10 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatLocation(filePath: string, lineNumber: number | null) {
+  return lineNumber ? `${filePath}（検出時: ${lineNumber}行目）` : filePath;
+}
+
 function SeverityBadge({ severity }: { severity: string }) {
   return <span className={`badge severity-${severity.toLowerCase()}`}>{severity}</span>;
 }
@@ -488,7 +492,7 @@ function FindingsView({
               <div className="finding-main">
                 <span className="finding-id">{finding.display_id}</span>
                 <strong>{finding.title}</strong>
-                <span className="file-path"><FileCode2 size={13} />{finding.file_path}:{finding.line_number}</span>
+                <span className="file-path"><FileCode2 size={13} />{formatLocation(finding.file_path, finding.line_number)}</span>
               </div>
               <div className="finding-aside">
                 <span className="badge">{finding.status}</span>
@@ -549,7 +553,7 @@ function FindingDetailView({
       <div className="metadata">
         <div><span>状態</span><select value={finding.status} onChange={(event) => void onTransition(event.target.value)}>{[finding.status, ...(transitionOptions[finding.status] || [])].map((status) => <option key={status}>{status}</option>)}</select></div>
         <div><span>Repository</span><strong>{finding.repository}</strong></div>
-        <div><span>ファイル</span><strong>{finding.file_path}:{finding.line_number}</strong></div>
+        <div><span>ファイル</span><strong>{formatLocation(finding.file_path, finding.line_number)}</strong></div>
         <div><span>シンボル</span><strong>{finding.symbol}</strong></div>
         <div><span>Rule</span><strong>{finding.rule_id}</strong></div>
         <div><span>検出</span><strong>{finding.detection_count}回 / 再発{finding.recurrence_count}回</strong></div>
@@ -740,7 +744,7 @@ function ManualFindingModal({
     rule_id: "",
     file_path: "",
     symbol: "<global>",
-    line_number: 1,
+    line_number: "",
     code_context: "該当コードを入力してください",
     code_language: "",
   });
@@ -752,7 +756,11 @@ function ManualFindingModal({
     try {
       await api("/api/v1/findings", {
         method: "POST",
-        body: JSON.stringify({ ...form, ai_confidence: null }),
+        body: JSON.stringify({
+          ...form,
+          line_number: form.line_number === "" ? null : Number(form.line_number),
+          ai_confidence: null,
+        }),
       });
       await onCreated();
     } catch (reason) {
@@ -774,7 +782,7 @@ function ManualFindingModal({
             <label><span>カテゴリ</span><input required value={form.category} onChange={(e) => update("category", e.target.value)} /></label>
             <label className="wide"><span>ファイルパス</span><input required value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="src/example.py" /></label>
             <label><span>シンボル</span><input required value={form.symbol} onChange={(e) => update("symbol", e.target.value)} /></label>
-            <label><span>行番号</span><input type="number" min="1" required value={form.line_number} onChange={(e) => update("line_number", Number(e.target.value))} /></label>
+            <label><span>検出時の行番号（任意）</span><input type="number" min="1" value={form.line_number} onChange={(e) => update("line_number", e.target.value)} /></label>
             <label className="wide"><span>問題（Markdown）</span><textarea required rows={5} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
             <label className="wide"><span>修正案（Markdown）</span><textarea required rows={4} value={form.remediation} onChange={(e) => update("remediation", e.target.value)} /></label>
             <label className="wide"><span>コードコンテキスト</span><textarea required rows={4} value={form.code_context} onChange={(e) => update("code_context", e.target.value)} /></label>

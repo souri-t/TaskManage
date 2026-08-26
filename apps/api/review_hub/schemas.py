@@ -17,7 +17,7 @@ class FindingInput(BaseModel):
     rule_id: str = Field(min_length=1, max_length=255)
     file_path: str = Field(min_length=1, max_length=1000)
     symbol: str = Field(min_length=1, max_length=500)
-    line_number: int = Field(ge=1)
+    line_number: int | None = Field(default=None, ge=1)
     code_context: str = Field(min_length=1)
     code_language: str | None = Field(default=None, max_length=64)
     ai_confidence: int | None = Field(default=None, ge=0, le=100)
@@ -135,7 +135,7 @@ class FindingSummary(OrmModel):
     review_source: str
     file_path: str
     symbol: str
-    line_number: int
+    line_number: int | None
     recurrence_count: int
     last_detected_at: datetime
 

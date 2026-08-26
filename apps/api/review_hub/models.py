@@ -131,7 +131,7 @@ class Finding(Base):
     rule_id: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     symbol: Mapped[str] = mapped_column(String(500), nullable=False)
-    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     fingerprint_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -204,7 +204,7 @@ class FindingOccurrence(Base):
         ForeignKey("review_runs.id", ondelete="CASCADE"), nullable=False
     )
     commit_sha: Mapped[str] = mapped_column(String(128), nullable=False)
-    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

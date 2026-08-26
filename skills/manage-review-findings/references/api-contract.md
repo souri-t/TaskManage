@@ -19,8 +19,10 @@ Send JSON with these top-level fields:
 | `findings` | array | May be empty |
 
 Each finding requires `title`, `description`, `remediation`, `severity`,
-`category`, `rule_id`, `file_path`, `symbol`, `line_number`, `code_context`, and
-`ai_confidence`. `code_language` is optional.
+`category`, `rule_id`, `file_path`, `symbol`, `code_context`, and
+`ai_confidence`. `line_number` and `code_language` are optional. When present,
+`line_number` is only the location at detection time; do not use it to identify
+the finding.
 
 `severity` is one of `Critical`, `High`, `Medium`, or `Low`.
 `ai_confidence` is an integer from 0 through 100. Use repository-relative,

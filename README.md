@@ -42,6 +42,11 @@ Docker Compose v2が必要です。
 docker compose up --build -d
 ```
 
+初回起動または依存関係・Dockerfileを変更した場合だけ`--build`を付けます。以後は
+`docker compose up -d`で起動でき、起動中はAPIと画面のソース変更が自動反映されます。
+データベースマイグレーションを追加した場合は、変更後に`docker compose restart api`を
+実行してください。
+
 - 管理画面: <http://127.0.0.1:8080/>
 - OpenAPI: <http://127.0.0.1:8080/docs>
 - ヘルスチェック: <http://127.0.0.1:8080/healthz>
