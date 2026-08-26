@@ -41,6 +41,20 @@ const statusOptions = [
   "取下げ",
 ];
 
+const transitionOptions: Record<string, string[]> = {
+  "新規": ["確認中", "対応対象", "対応不要", "リスク受容", "保留", "取下げ"],
+  "確認中": ["対応対象", "対応不要", "リスク受容", "保留", "取下げ"],
+  "対応対象": ["対応中", "保留", "取下げ"],
+  "対応中": ["修正確認中", "保留"],
+  "修正確認中": ["修正済み", "対応中"],
+  "保留": ["確認中", "対応対象", "取下げ"],
+  "修正済み": ["確認中"],
+  "対応不要": ["確認中"],
+  "リスク受容": ["確認中"],
+  "重複": [],
+  "取下げ": ["確認中"],
+};
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -165,12 +179,10 @@ export default function Home() {
 
   const transition = async (status: string) => {
     if (!selected || status === selected.status) return;
-    const reason = window.prompt("変更理由を入力してください");
-    if (!reason) return;
     try {
       const updated = await api<Finding>(
         `/api/v1/findings/${selected.id}/transitions`,
-        { method: "POST", body: JSON.stringify({ status, reason }) },
+        { method: "POST", body: JSON.stringify({ status }) },
       );
       setSelected(updated);
       await refresh();
@@ -194,6 +206,31 @@ export default function Home() {
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "重複元の設定に失敗しました");
+    }
+  };
+
+  const requestCodexFix = async (note: string | null) => {
+    if (!selected) return;
+    try {
+      const updated = await api<Finding>(
+        `/api/v1/findings/${selected.id}/codex-fix-request`,
+        { method: "POST", body: JSON.stringify({ note }) },
+      );
+      setSelected(updated);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Codex修正依頼に失敗しました");
+    }
+  };
+
+  const cancelCodexFix = async () => {
+    if (!selected) return;
+    try {
+      const updated = await api<Finding>(`/api/v1/findings/${selected.id}/codex-fix-request`, { method: "DELETE" });
+      setSelected(updated);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Codex修正依頼の解除に失敗しました");
     }
   };
 
@@ -277,6 +314,8 @@ export default function Home() {
             onSelect={setSelected}
             onTransition={transition}
             onDuplicate={markDuplicate}
+            onRequestCodexFix={requestCodexFix}
+            onCancelCodexFix={cancelCodexFix}
           />
         )}
         {view === "runs" && <RunsView runs={runs} />}
@@ -387,6 +426,8 @@ function FindingsView({
   onSelect,
   onTransition,
   onDuplicate,
+  onRequestCodexFix,
+  onCancelCodexFix,
 }: {
   findings: Finding[];
   repositories: RepositoryOption[];
@@ -403,6 +444,8 @@ function FindingsView({
   onSelect: (finding: Finding) => void;
   onTransition: (status: string) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
+  onRequestCodexFix: (note: string | null) => Promise<void>;
+  onCancelCodexFix: () => Promise<void>;
 }) {
   return (
     <section className="content findings-content">
@@ -464,6 +507,8 @@ function FindingsView({
           timeline={timeline}
           onTransition={onTransition}
           onDuplicate={onDuplicate}
+          onRequestCodexFix={onRequestCodexFix}
+          onCancelCodexFix={onCancelCodexFix}
         />
       </div>
     </section>
@@ -476,15 +521,20 @@ function FindingDetailView({
   timeline,
   onTransition,
   onDuplicate,
+  onRequestCodexFix,
+  onCancelCodexFix,
 }: {
   finding: Finding | null;
   findings: Finding[];
   timeline: TimelineEvent[];
   onTransition: (status: string) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
+  onRequestCodexFix: (note: string | null) => Promise<void>;
+  onCancelCodexFix: () => Promise<void>;
 }) {
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [duplicateTarget, setDuplicateTarget] = useState("");
+  const [fixNote, setFixNote] = useState("");
   if (!finding) return <article className="detail-panel empty-detail">指摘を選択してください。</article>;
   return (
     <article className="detail-panel">
@@ -497,7 +547,7 @@ function FindingDetailView({
       </div>
 
       <div className="metadata">
-        <div><span>状態</span><select value={finding.status} onChange={(event) => void onTransition(event.target.value)}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></div>
+        <div><span>状態</span><select value={finding.status} onChange={(event) => void onTransition(event.target.value)}>{[finding.status, ...(transitionOptions[finding.status] || [])].map((status) => <option key={status}>{status}</option>)}</select></div>
         <div><span>Repository</span><strong>{finding.repository}</strong></div>
         <div><span>ファイル</span><strong>{finding.file_path}:{finding.line_number}</strong></div>
         <div><span>シンボル</span><strong>{finding.symbol}</strong></div>
@@ -505,7 +555,9 @@ function FindingDetailView({
         <div><span>検出</span><strong>{finding.detection_count}回 / 再発{finding.recurrence_count}回</strong></div>
       </div>
 
-      {finding.status !== "重複" && (
+      {finding.status !== "重複" && findings.some(
+        (candidate) => candidate.id !== finding.id && candidate.repository === finding.repository && candidate.status !== "重複",
+      ) && (
         <div className="duplicate-control">
           <select
             aria-label="重複元"
@@ -534,6 +586,24 @@ function FindingDetailView({
           >
             重複元に設定
           </button>
+        </div>
+      )}
+
+      {finding.status === "対応対象" && (
+        <div className="detail-section">
+          <h3>Codexへの修正依頼</h3>
+          {finding.codex_fix_requested ? (
+            <>
+              <p>Codexへの修正を依頼済みです。</p>
+              {finding.codex_fix_request_note && <MarkdownView value={finding.codex_fix_request_note} />}
+              <button type="button" className="secondary-button" onClick={() => void onCancelCodexFix()}>依頼を解除</button>
+            </>
+          ) : (
+            <div className="codex-fix-form">
+              <label><span>依頼事項（任意）</span><textarea rows={3} value={fixNote} onChange={(event) => setFixNote(event.target.value)} placeholder="空欄の場合は、指摘内容と修正案に基づいて対応します。" /></label>
+              <button type="button" onClick={() => void onRequestCodexFix(fixNote || null)}>Codexに修正を依頼</button>
+            </div>
+          )}
         </div>
       )}
 

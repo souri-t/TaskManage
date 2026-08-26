@@ -179,6 +179,54 @@ def test_repositories_are_auto_registered_and_listed():
     ]
 
 
+def test_codex_fix_request_is_flagged_and_completed():
+    created = client.post(
+        "/api/v1/reconciliations", json=payload(), headers={"Idempotency-Key": "fix-request"}
+    )
+    finding_id = created.json()["results"][0]["finding_id"]
+    transitioned = client.post(
+        f"/api/v1/findings/{finding_id}/transitions",
+        json={"status": "対応対象"},
+    )
+    assert transitioned.status_code == 200
+
+    requested = client.post(
+        f"/api/v1/findings/{finding_id}/codex-fix-request",
+        json={"note": "既存の挙動を維持してください"},
+    )
+    assert requested.status_code == 200
+    assert requested.json()["codex_fix_requested"] is True
+    assert requested.json()["codex_fix_request_note"] == "既存の挙動を維持してください"
+
+    pending = client.get(
+        "/api/v1/findings",
+        params={
+            "repository": "example/repository",
+            "status": "対応対象",
+            "codex_fix_requested": "true",
+        },
+    )
+    assert [item["id"] for item in pending.json()["items"]] == [finding_id]
+
+    started = client.post(f"/api/v1/findings/{finding_id}/codex-fix-start")
+    assert started.status_code == 200
+    assert started.json()["status"] == "対応中"
+
+    completed = client.post(
+        f"/api/v1/findings/{finding_id}/codex-fix-complete",
+        json={"summary": "src/example.py を修正。pytest: passed"},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "修正確認中"
+    assert completed.json()["codex_fix_requested"] is False
+
+    timeline = client.get(f"/api/v1/findings/{finding_id}/timeline")
+    assert [item["event_type"] for item in timeline.json()["items"][:2]] == [
+        "codex_fix_completed",
+        "codex_fix_started",
+    ]
+
+
 def test_findings_can_be_filtered_by_repository():
     first = client.post(
         "/api/v1/findings",

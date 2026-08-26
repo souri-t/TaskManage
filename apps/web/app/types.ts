@@ -22,6 +22,9 @@ export type Finding = {
   detection_count: number;
   recurrence_count: number;
   ai_confidence: number | null;
+  codex_fix_requested: boolean;
+  codex_fix_requested_at: string | null;
+  codex_fix_request_note: string | null;
 };
 
 export type TimelineEvent = {

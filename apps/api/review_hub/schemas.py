@@ -69,7 +69,7 @@ class ManualFindingInput(FindingInput):
 
 class TransitionInput(BaseModel):
     status: str
-    reason: str = Field(min_length=1, max_length=5000)
+    reason: str | None = Field(default=None, max_length=5000)
 
     @field_validator("status")
     @classmethod
@@ -77,6 +77,21 @@ class TransitionInput(BaseModel):
         if value not in STATUSES:
             raise ValueError("未知のステータスです")
         return value
+
+
+class CodexFixRequestInput(BaseModel):
+    note: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("note")
+    @classmethod
+    def normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class CodexFixCompletionInput(BaseModel):
+    summary: str = Field(min_length=1, max_length=10_000)
 
 
 class DuplicateInput(BaseModel):

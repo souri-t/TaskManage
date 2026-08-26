@@ -144,9 +144,32 @@ curl --fail-with-body \
 - `GET /api/v1/findings/{id}/timeline`
 - `POST /api/v1/findings`（有識者指摘）
 - `POST /api/v1/findings/{id}/transitions`
+- `POST` / `DELETE /api/v1/findings/{id}/codex-fix-request`
+- `POST /api/v1/findings/{id}/codex-fix-start`、`POST /api/v1/findings/{id}/codex-fix-complete`
 - `POST /api/v1/findings/{id}/duplicate`
 - `GET /api/v1/review-runs`、`GET /api/v1/review-runs/{id}`
 - `GET /api/v1/dashboard/summary`
+
+### Codexに修正を依頼する
+
+指摘を`対応対象`へ変更すると、詳細画面から**Codexに修正を依頼**できます。
+依頼事項は任意です。空欄の場合も、Codexは指摘本文と修正案に基づいて対応します。
+
+対象リポジトリをCodexで開いて、次だけを依頼してください。
+
+```text
+$fix-review-findings を使って対応してください。
+```
+
+スキルは現在のGitリポジトリに対応する、依頼済みの`対応対象`指摘だけを取得します。
+修正と関連テストが成功すると指摘は`修正確認中`となり、`修正済み`への変更は人が確認して行います。
+論理リポジトリ名を自動判定できない場合だけ、最初に現在のリポジトリに次の設定を追加してください。
+
+```bash
+git config review-hub.repository example/backend
+```
+
+`skills/fix-review-findings`も、既存の指摘管理スキルと同様にCodex環境へコピーして使用します。
 
 ## Markdownとコード
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -21,6 +21,8 @@ from .models import (
 )
 from .schemas import (
     DuplicateInput,
+    CodexFixCompletionInput,
+    CodexFixRequestInput,
     ManualFindingInput,
     ReconciliationInput,
     ReviewGuidelineInput,
@@ -77,6 +79,9 @@ def finding_dict(finding: Finding, repository_name: str) -> dict:
         "detection_count": finding.detection_count,
         "recurrence_count": finding.recurrence_count,
         "ai_confidence": finding.ai_confidence,
+        "codex_fix_requested": finding.codex_fix_requested_at is not None,
+        "codex_fix_requested_at": finding.codex_fix_requested_at,
+        "codex_fix_request_note": finding.codex_fix_request_note,
     }
 
 
@@ -214,6 +219,7 @@ def list_findings(
     severity: str | None = None,
     review_source: str | None = None,
     recurring: bool | None = None,
+    codex_fix_requested: bool | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=25, ge=1, le=100),
@@ -229,6 +235,10 @@ def list_findings(
         conditions.append(Finding.review_source == review_source)
     if recurring is True:
         conditions.append(Finding.recurrence_count > 0)
+    if codex_fix_requested is True:
+        conditions.append(Finding.codex_fix_requested_at.is_not(None))
+    if codex_fix_requested is False:
+        conditions.append(Finding.codex_fix_requested_at.is_(None))
     if search:
         pattern = f"%{search}%"
         conditions.append(
@@ -370,6 +380,92 @@ def transition_finding(
         assert repository is not None
         result = finding_dict(finding, repository.name)
     return result
+
+
+@app.post("/api/v1/findings/{finding_id}/codex-fix-request")
+def request_codex_fix(finding_id: str, data: CodexFixRequestInput) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        if finding.status != "対応対象":
+            raise HTTPException(status_code=409, detail="対応対象の指摘だけをCodexへ依頼できます")
+        was_requested = finding.codex_fix_requested_at is not None
+        finding.codex_fix_requested_at = datetime.now(timezone.utc)
+        finding.codex_fix_request_note = data.note
+        finding.updated_by = HUMAN_SOURCE
+        add_audit(
+            session,
+            finding_id=finding.id,
+            review_run_id=None,
+            event_type="codex_fix_requested",
+            actor_type="human",
+            actor_label=HUMAN_SOURCE,
+            previous={"requested": was_requested},
+            resulting={"requested": True, "has_note": data.note is not None},
+            reason=data.note,
+        )
+        repository = session.get(Repository, finding.repository_id)
+        assert repository is not None
+        return finding_dict(finding, repository.name)
+
+
+@app.delete("/api/v1/findings/{finding_id}/codex-fix-request")
+def cancel_codex_fix_request(finding_id: str) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        if finding.codex_fix_requested_at is None:
+            raise HTTPException(status_code=409, detail="Codex修正依頼は作成されていません")
+        if finding.status != "対応対象":
+            raise HTTPException(status_code=409, detail="着手済みのCodex修正依頼は解除できません")
+        finding.codex_fix_requested_at = None
+        finding.codex_fix_request_note = None
+        finding.updated_by = HUMAN_SOURCE
+        add_audit(
+            session, finding_id=finding.id, review_run_id=None,
+            event_type="codex_fix_request_cancelled", actor_type="human",
+            actor_label=HUMAN_SOURCE, resulting={"requested": False},
+        )
+        repository = session.get(Repository, finding.repository_id)
+        assert repository is not None
+        return finding_dict(finding, repository.name)
+
+
+@app.post("/api/v1/findings/{finding_id}/codex-fix-start")
+def start_codex_fix(finding_id: str) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        if finding.status != "対応対象" or finding.codex_fix_requested_at is None:
+            raise HTTPException(status_code=409, detail="依頼済みかつ対応対象の指摘だけを着手できます")
+        finding.status = "対応中"
+        finding.updated_by = "Codex"
+        add_audit(
+            session, finding_id=finding.id, review_run_id=None,
+            event_type="codex_fix_started", actor_type="automation", actor_label="Codex",
+            previous={"status": "対応対象"}, resulting={"status": "対応中"},
+        )
+        repository = session.get(Repository, finding.repository_id)
+        assert repository is not None
+        return finding_dict(finding, repository.name)
+
+
+@app.post("/api/v1/findings/{finding_id}/codex-fix-complete")
+def complete_codex_fix(finding_id: str, data: CodexFixCompletionInput) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        if finding.status != "対応中" or finding.codex_fix_requested_at is None:
+            raise HTTPException(status_code=409, detail="Codexが着手した指摘だけを完了できます")
+        finding.status = "修正確認中"
+        finding.codex_fix_requested_at = None
+        finding.codex_fix_request_note = None
+        finding.updated_by = "Codex"
+        add_audit(
+            session, finding_id=finding.id, review_run_id=None,
+            event_type="codex_fix_completed", actor_type="automation", actor_label="Codex",
+            previous={"status": "対応中"}, resulting={"status": "修正確認中"},
+            reason=data.summary,
+        )
+        repository = session.get(Repository, finding.repository_id)
+        assert repository is not None
+        return finding_dict(finding, repository.name)
 
 
 def would_create_cycle(
