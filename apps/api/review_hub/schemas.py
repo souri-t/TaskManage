@@ -64,12 +64,22 @@ class ReconciliationInput(BaseModel):
 
 class ManualFindingInput(FindingInput):
     repository: str = Field(min_length=1, max_length=255)
+    category: str | None = Field(default=None, min_length=1, max_length=128)
+    rule_id: str | None = Field(default=None, min_length=1, max_length=255)
     detected_at: datetime | None = None
 
 
 class TransitionInput(BaseModel):
     status: str
     reason: str | None = Field(default=None, max_length=5000)
+    non_remediation_reason: Literal[
+        "リスク受容",
+        "指摘の誤り（取下げ）",
+        "要件外",
+        "他の修正で解消済み",
+        "今回対応しない",
+        "その他",
+    ] | None = None
 
     @field_validator("status")
     @classmethod
@@ -77,6 +87,12 @@ class TransitionInput(BaseModel):
         if value not in STATUSES:
             raise ValueError("未知のステータスです")
         return value
+
+    @model_validator(mode="after")
+    def reason_for_non_remediation(self) -> TransitionInput:
+        if self.status == "対応不要" and self.non_remediation_reason is None:
+            raise ValueError("対応不要の理由を選択してください")
+        return self
 
 
 class CodexFixRequestInput(BaseModel):

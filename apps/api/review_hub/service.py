@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -558,7 +559,6 @@ def create_manual_finding(
     session: Session, data: ManualFindingInput
 ) -> Finding:
     repository = get_or_create_repository(session, data.repository)
-    candidates = duplicate_candidates(session, repository.id, data)
     detected_at = data.detected_at or datetime.now().astimezone()
     code_excerpt, code_language = prepared_code(data)
     finding = Finding(
@@ -568,8 +568,8 @@ def create_manual_finding(
         description_markdown=data.description,
         remediation_markdown=data.remediation,
         severity=data.severity,
-        category=data.category,
-        rule_id=data.rule_id,
+        category=data.category or "Other",
+        rule_id=data.rule_id or f"MANUAL-{uuid4()}",
         file_path=data.file_path,
         symbol=data.symbol or "<global>",
         line_number=data.line_number,
@@ -598,13 +598,4 @@ def create_manual_finding(
         actor_label=HUMAN_SOURCE,
         resulting={"status": finding.status},
     )
-    for candidate in candidates:
-        session.add(
-            FindingRelation(
-                source_finding_id=finding.id,
-                target_finding_id=candidate.id,
-                relation_type="duplicate_candidate",
-                created_by=HUMAN_SOURCE,
-            )
-        )
     return finding

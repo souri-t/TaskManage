@@ -10,33 +10,27 @@ from typing import Any
 
 STATUSES = (
     "新規",
-    "確認中",
-    "対応対象",
+    "対応予定",
     "対応中",
-    "修正確認中",
+    "修正完了",
     "保留",
-    "修正済み",
+    "クローズ",
     "対応不要",
-    "リスク受容",
     "重複",
-    "取下げ",
 )
 SEVERITIES = ("Critical", "High", "Medium", "Low")
 AUTOMATION_SOURCES = ("Codex", "静的解析")
 HUMAN_SOURCE = "有識者"
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "新規": {"確認中", "対応対象", "対応不要", "リスク受容", "保留", "取下げ"},
-    "確認中": {"対応対象", "対応不要", "リスク受容", "保留", "取下げ"},
-    "対応対象": {"対応中", "保留", "取下げ"},
-    "対応中": {"修正確認中", "保留"},
-    "修正確認中": {"修正済み", "対応中"},
-    "保留": {"確認中", "対応対象", "取下げ"},
-    "修正済み": {"確認中"},
-    "対応不要": {"確認中"},
-    "リスク受容": {"確認中"},
+    "新規": {"対応予定", "対応不要", "保留"},
+    "対応予定": {"対応中", "保留"},
+    "対応中": {"修正完了", "保留"},
+    "修正完了": {"クローズ", "対応中"},
+    "保留": {"新規", "対応予定"},
+    "クローズ": {"新規"},
+    "対応不要": {"新規"},
     "重複": set(),
-    "取下げ": {"確認中"},
 }
 
 LANGUAGE_BY_SUFFIX = {
@@ -138,9 +132,9 @@ def infer_language(file_path: str, requested: str | None) -> str:
 
 
 def rediscovery_action(status: str) -> dict[str, Any]:
-    if status == "修正済み":
+    if status == "クローズ":
         return {
-            "status": "確認中",
+            "status": "新規",
             "increment_detection": True,
             "increment_recurrence": True,
             "action": "reopened",

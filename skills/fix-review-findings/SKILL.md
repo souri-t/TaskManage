@@ -17,7 +17,7 @@ branch, or test scope.
    for the logical repository name if the match is not unique. Never send a
    filesystem path to Review Hub.
 2. Check `GET http://127.0.0.1:8080/readyz`, then list only requested findings
-   with `GET /api/v1/findings?repository=<name>&status=対応対象&codex_fix_requested=true`.
+   with `GET /api/v1/findings?repository=<name>&status=対応予定&codex_fix_requested=true`.
    If none exist, say so and make no code or Hub changes.
 3. For each finding, read its description, remediation, code excerpt, and
    optional `codex_fix_request_note`. Inspect the current source before acting;
@@ -31,7 +31,7 @@ branch, or test scope.
 5. If the implementation and tests are successful, send
    `POST /api/v1/findings/{id}/codex-fix-complete` with a concise `summary`
    covering changed files and test results. This moves the finding to
-   `修正確認中`; never mark it `修正済み`.
+   `修正完了`; never mark it `クローズ`.
 
 Use the API contract in [references/api-contract.md](references/api-contract.md)
 for request bodies. Report completed findings, remaining requested findings,

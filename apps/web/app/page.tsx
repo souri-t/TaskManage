@@ -30,30 +30,34 @@ type Dashboard = {
 
 const statusOptions = [
   "新規",
-  "確認中",
-  "対応対象",
+  "対応予定",
   "対応中",
-  "修正確認中",
+  "修正完了",
   "保留",
-  "修正済み",
+  "クローズ",
   "対応不要",
-  "リスク受容",
-  "取下げ",
+  "重複",
 ];
 
 const transitionOptions: Record<string, string[]> = {
-  "新規": ["確認中", "対応対象", "対応不要", "リスク受容", "保留", "取下げ"],
-  "確認中": ["対応対象", "対応不要", "リスク受容", "保留", "取下げ"],
-  "対応対象": ["対応中", "保留", "取下げ"],
-  "対応中": ["修正確認中", "保留"],
-  "修正確認中": ["修正済み", "対応中"],
-  "保留": ["確認中", "対応対象", "取下げ"],
-  "修正済み": ["確認中"],
-  "対応不要": ["確認中"],
-  "リスク受容": ["確認中"],
+  "新規": ["対応予定", "対応不要", "保留"],
+  "対応予定": ["対応中", "保留"],
+  "対応中": ["修正完了", "保留"],
+  "修正完了": ["クローズ", "対応中"],
+  "保留": ["新規", "対応予定"],
+  "クローズ": ["新規"],
+  "対応不要": ["新規"],
   "重複": [],
-  "取下げ": ["確認中"],
 };
+
+const nonRemediationReasons = [
+  "リスク受容",
+  "指摘の誤り（取下げ）",
+  "要件外",
+  "他の修正で解消済み",
+  "今回対応しない",
+  "その他",
+];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -181,12 +185,12 @@ export default function Home() {
       .catch(() => setTimeline([]));
   }, [selected]);
 
-  const transition = async (status: string) => {
+  const transition = async (status: string, nonRemediationReason?: string) => {
     if (!selected || status === selected.status) return;
     try {
       const updated = await api<Finding>(
         `/api/v1/findings/${selected.id}/transitions`,
-        { method: "POST", body: JSON.stringify({ status }) },
+        { method: "POST", body: JSON.stringify({ status, non_remediation_reason: nonRemediationReason }) },
       );
       setSelected(updated);
       await refresh();
@@ -333,6 +337,7 @@ export default function Home() {
 
       {manualOpen && (
         <ManualFindingModal
+          repositories={repositories}
           onClose={() => setManualOpen(false)}
           onCreated={async () => {
             setManualOpen(false);
@@ -378,7 +383,7 @@ function DashboardView({
         <Stat label="未対応" value={stats.open} icon={<Activity size={19} />} />
         <Stat label="Critical / High" value={stats.critical_high} icon={<AlertTriangle size={19} />} />
         <Stat label="再発" value={stats.recurring} icon={<RefreshCw size={19} />} />
-        <Stat label="修正確認中" value={stats.verification} icon={<CheckCircle2 size={19} />} />
+        <Stat label="修正完了" value={stats.verification} icon={<CheckCircle2 size={19} />} />
       </div>
       <div className="dashboard-grid">
         <article className="panel">
@@ -446,7 +451,7 @@ function FindingsView({
   onStatusFilter: (value: string) => void;
   onSeverityFilter: (value: string) => void;
   onSelect: (finding: Finding) => void;
-  onTransition: (status: string) => Promise<void>;
+  onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
@@ -531,7 +536,7 @@ function FindingDetailView({
   finding: Finding | null;
   findings: Finding[];
   timeline: TimelineEvent[];
-  onTransition: (status: string) => Promise<void>;
+  onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
@@ -539,6 +544,8 @@ function FindingDetailView({
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [duplicateTarget, setDuplicateTarget] = useState("");
   const [fixNote, setFixNote] = useState("");
+  const [nonRemediationReason, setNonRemediationReason] = useState("");
+  const [selectingNonRemediation, setSelectingNonRemediation] = useState(false);
   if (!finding) return <article className="detail-panel empty-detail">指摘を選択してください。</article>;
   return (
     <article className="detail-panel">
@@ -551,13 +558,39 @@ function FindingDetailView({
       </div>
 
       <div className="metadata">
-        <div><span>状態</span><select value={finding.status} onChange={(event) => void onTransition(event.target.value)}>{[finding.status, ...(transitionOptions[finding.status] || [])].map((status) => <option key={status}>{status}</option>)}</select></div>
+        <div><span>状態</span><select value={finding.status} onChange={(event) => {
+          if (event.target.value === "対応不要") {
+            setSelectingNonRemediation(true);
+            return;
+          }
+          void onTransition(event.target.value);
+        }}>{statusOptions.map((status) => <option key={status} disabled={status !== finding.status && !(transitionOptions[finding.status] || []).includes(status)}>{status}</option>)}</select></div>
         <div><span>Repository</span><strong>{finding.repository}</strong></div>
         <div><span>ファイル</span><strong>{formatLocation(finding.file_path, finding.line_number)}</strong></div>
         <div><span>シンボル</span><strong>{finding.symbol}</strong></div>
         <div><span>Rule</span><strong>{finding.rule_id}</strong></div>
         <div><span>検出</span><strong>{finding.detection_count}回 / 再発{finding.recurrence_count}回</strong></div>
       </div>
+
+      {(selectingNonRemediation || finding.status === "対応不要") && (
+        <div className="detail-section non-remediation-control">
+          <h3>対応不要の理由</h3>
+          {finding.status === "対応不要" ? (
+            <p>{finding.non_remediation_reason || "未設定"}</p>
+          ) : (
+            <>
+              <select value={nonRemediationReason} onChange={(event) => setNonRemediationReason(event.target.value)}>
+                <option value="">選択してください</option>
+                {nonRemediationReasons.map((reason) => <option key={reason}>{reason}</option>)}
+              </select>
+              <button type="button" disabled={!nonRemediationReason} onClick={() => {
+                void onTransition("対応不要", nonRemediationReason);
+                setSelectingNonRemediation(false);
+              }}>対応不要にする</button>
+            </>
+          )}
+        </div>
+      )}
 
       {finding.status !== "重複" && findings.some(
         (candidate) => candidate.id !== finding.id && candidate.repository === finding.repository && candidate.status !== "重複",
@@ -593,7 +626,7 @@ function FindingDetailView({
         </div>
       )}
 
-      {finding.status === "対応対象" && (
+      {finding.status === "対応予定" && (
         <div className="detail-section">
           <h3>Codexへの修正依頼</h3>
           {finding.codex_fix_requested ? (
@@ -726,28 +759,39 @@ function GuidelineModal({ guideline, onClose, onSaved }: { guideline: ReviewGuid
 }
 
 function ManualFindingModal({
+  repositories,
   onClose,
   onCreated,
 }: {
+  repositories: RepositoryOption[];
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [symbolOptions, setSymbolOptions] = useState<string[]>([]);
   const [form, setForm] = useState({
     repository: "",
     title: "",
     description: "",
     remediation: "",
     severity: "Medium",
-    category: "Correctness",
-    rule_id: "",
     file_path: "",
     symbol: "<global>",
-    line_number: "",
     code_context: "該当コードを入力してください",
     code_language: "",
   });
+
+  useEffect(() => {
+    if (!form.repository) {
+      return;
+    }
+    const params = new URLSearchParams({ repository: form.repository });
+    if (form.file_path) params.set("file_path", form.file_path);
+    api<{ items: string[] }>(`/api/v1/symbols?${params.toString()}`)
+      .then((payload) => setSymbolOptions(payload.items))
+      .catch(() => setSymbolOptions([]));
+  }, [form.file_path, form.repository]);
   const update = (key: string, value: string | number) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -757,9 +801,7 @@ function ManualFindingModal({
       await api("/api/v1/findings", {
         method: "POST",
         body: JSON.stringify({
-          ...form,
-          line_number: form.line_number === "" ? null : Number(form.line_number),
-          ai_confidence: null,
+          ...form, ai_confidence: null,
         }),
       });
       await onCreated();
@@ -775,17 +817,14 @@ function ManualFindingModal({
         <div className="modal-header"><div><span>有識者レビュー</span><h2 id="manual-title">指摘を登録</h2></div><button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={18} /></button></div>
         <form onSubmit={submit}>
           <div className="form-grid">
-            <label><span>Repository</span><input required value={form.repository} onChange={(e) => update("repository", e.target.value)} placeholder="example/repository" /></label>
+            <label><span>Repository</span><select required value={form.repository} onChange={(e) => update("repository", e.target.value)}><option value="">選択してください</option>{repositories.map((repository) => <option key={repository.id} value={repository.name}>{repository.display_name}</option>)}</select></label>
             <label><span>重要度</span><select value={form.severity} onChange={(e) => update("severity", e.target.value)}>{["Critical", "High", "Medium", "Low"].map((item) => <option key={item}>{item}</option>)}</select></label>
             <label className="wide"><span>タイトル</span><input required value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
-            <label><span>Rule ID</span><input required value={form.rule_id} onChange={(e) => update("rule_id", e.target.value)} /></label>
-            <label><span>カテゴリ</span><input required value={form.category} onChange={(e) => update("category", e.target.value)} /></label>
             <label className="wide"><span>ファイルパス</span><input required value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="src/example.py" /></label>
-            <label><span>シンボル</span><input required value={form.symbol} onChange={(e) => update("symbol", e.target.value)} /></label>
-            <label><span>検出時の行番号（任意）</span><input type="number" min="1" value={form.line_number} onChange={(e) => update("line_number", e.target.value)} /></label>
+            <label><span>シンボル</span><input required list="manual-symbol-options" value={form.symbol} onChange={(e) => update("symbol", e.target.value)} /><datalist id="manual-symbol-options">{form.repository && symbolOptions.map((symbol) => <option key={symbol} value={symbol} />)}</datalist></label>
             <label className="wide"><span>問題（Markdown）</span><textarea required rows={5} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-            <label className="wide"><span>修正案（Markdown）</span><textarea required rows={4} value={form.remediation} onChange={(e) => update("remediation", e.target.value)} /></label>
             <label className="wide"><span>コードコンテキスト</span><textarea required rows={4} value={form.code_context} onChange={(e) => update("code_context", e.target.value)} /></label>
+            <label className="wide"><span>修正案（Markdown）</span><textarea required rows={4} value={form.remediation} onChange={(e) => update("remediation", e.target.value)} /></label>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>キャンセル</button><button className="primary-button" disabled={submitting}>{submitting ? "登録中…" : "登録"}</button></div>

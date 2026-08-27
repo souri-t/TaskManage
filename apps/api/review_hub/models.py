@@ -148,6 +148,9 @@ class Finding(Base):
     detection_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     recurrence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     ai_confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    non_remediation_reason: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     codex_fix_requested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )

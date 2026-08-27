@@ -44,8 +44,8 @@ def test_path_cannot_escape_repository():
 
 
 def test_fixed_reopens_and_hold_does_not_increment():
-    fixed = rediscovery_action("修正済み")
-    assert fixed["status"] == "確認中"
+    fixed = rediscovery_action("クローズ")
+    assert fixed["status"] == "新規"
     assert fixed["increment_recurrence"] is True
     hold = rediscovery_action("保留")
     assert hold["increment_detection"] is False

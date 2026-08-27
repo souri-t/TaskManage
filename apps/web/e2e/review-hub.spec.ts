@@ -61,9 +61,8 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
   await expect(page.getByText(/```python/)).toBeVisible();
 
   await page.getByRole("button", { name: "有識者指摘" }).click();
-  await page.getByRole("textbox", { name: "Repository" }).fill(repository);
+  await page.getByRole("combobox", { name: "Repository" }).selectOption(repository);
   await page.getByRole("textbox", { name: "タイトル" }).fill(`Human finding ${suffix}`);
-  await page.getByRole("textbox", { name: "Rule ID" }).fill("E2E-HUMAN-001");
   await page.getByRole("textbox", { name: "ファイルパス" }).fill("src/human.py");
   await page.getByRole("textbox", { name: "シンボル" }).fill("check");
   await page.getByRole("textbox", { name: "問題（Markdown）" }).fill("Human evidence");
@@ -74,10 +73,9 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
     page.getByRole("button", { name: new RegExp(`Human finding ${suffix}`) }),
   ).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept("E2E triage"));
   const status = page.locator(".detail-panel").getByRole("combobox").first();
-  await status.selectOption("確認中");
-  await expect(status).toHaveValue("確認中");
+  await status.selectOption("対応予定");
+  await expect(status).toHaveValue("対応予定");
 
   await page.getByRole("button", { name: "レビュー履歴" }).click();
   await expect(page.getByText(repository).first()).toBeVisible();

@@ -110,7 +110,7 @@ def test_apply_is_idempotent_and_reopens_fixed():
     with SessionLocal() as session, session.begin():
         finding = session.get(Finding, finding_id)
         assert finding is not None
-        finding.status = "修正済み"
+        finding.status = "クローズ"
 
     changed_payload = payload()
     changed_payload["commit_sha"] = "fedcba9876543210"
@@ -123,7 +123,7 @@ def test_apply_is_idempotent_and_reopens_fixed():
     assert reopened.json()["results"][0]["action"] == "reopened"
     with SessionLocal() as session:
         finding = session.get(Finding, finding_id)
-        assert finding.status == "確認中"
+        assert finding.status == "新規"
         assert finding.recurrence_count == 1
         assert session.scalar(select(func.count(FindingOccurrence.id))) == 2
 
@@ -186,7 +186,7 @@ def test_codex_fix_request_is_flagged_and_completed():
     finding_id = created.json()["results"][0]["finding_id"]
     transitioned = client.post(
         f"/api/v1/findings/{finding_id}/transitions",
-        json={"status": "対応対象"},
+        json={"status": "対応予定"},
     )
     assert transitioned.status_code == 200
 
@@ -202,7 +202,7 @@ def test_codex_fix_request_is_flagged_and_completed():
         "/api/v1/findings",
         params={
             "repository": "example/repository",
-            "status": "対応対象",
+            "status": "対応予定",
             "codex_fix_requested": "true",
         },
     )
@@ -217,7 +217,7 @@ def test_codex_fix_request_is_flagged_and_completed():
         json={"summary": "src/example.py を修正。pytest: passed"},
     )
     assert completed.status_code == 200
-    assert completed.json()["status"] == "修正確認中"
+    assert completed.json()["status"] == "修正完了"
     assert completed.json()["codex_fix_requested"] is False
 
     timeline = client.get(f"/api/v1/findings/{finding_id}/timeline")
@@ -267,10 +267,10 @@ def test_transition_and_duplicate_cycle_protection():
 
     transition = client.post(
         f"/api/v1/findings/{first['id']}/transitions",
-        json={"status": "確認中", "reason": "triage"},
+        json={"status": "対応予定", "reason": "triage"},
     )
     assert transition.status_code == 200
-    assert transition.json()["status"] == "確認中"
+    assert transition.json()["status"] == "対応予定"
 
     duplicate = client.post(
         f"/api/v1/findings/{first['id']}/duplicate",
@@ -318,12 +318,62 @@ def test_apply_stores_only_redacted_bounded_code_excerpt():
         assert len(finding.code_excerpt.encode("utf-8")) <= 16 * 1024
 
 
-def test_manual_finding_can_omit_line_number():
+def test_manual_finding_can_omit_metadata():
     manual = {
         **payload()["findings"][0],
         "repository": "example/repository",
     }
     manual.pop("line_number")
+    manual.pop("category")
+    manual.pop("rule_id")
     response = client.post("/api/v1/findings", json=manual)
     assert response.status_code == 201
     assert response.json()["line_number"] is None
+    assert response.json()["category"] == "Other"
+    assert response.json()["rule_id"].startswith("MANUAL-")
+
+
+def test_symbols_can_be_filtered_by_repository_and_file_path():
+    first = client.post(
+        "/api/v1/findings",
+        json={**payload()["findings"][0], "repository": "example/repository"},
+    )
+    assert first.status_code == 201
+    second = client.post(
+        "/api/v1/findings",
+        json={
+            **payload()["findings"][0],
+            "repository": "example/repository",
+            "symbol": "Other.run",
+            "file_path": "src/other.py",
+        },
+    )
+    assert second.status_code == 201
+
+    response = client.get(
+        "/api/v1/symbols",
+        params={"repository": "example/repository", "file_path": "src/example.py"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"items": ["Example.run"]}
+
+
+def test_non_remediation_reason_is_required_and_saved():
+    created = client.post(
+        "/api/v1/findings",
+        json={**payload()["findings"][0], "repository": "example/repository"},
+    )
+    finding_id = created.json()["id"]
+    missing_reason = client.post(
+        f"/api/v1/findings/{finding_id}/transitions",
+        json={"status": "対応不要"},
+    )
+    assert missing_reason.status_code == 422
+
+    transitioned = client.post(
+        f"/api/v1/findings/{finding_id}/transitions",
+        json={"status": "対応不要", "non_remediation_reason": "リスク受容"},
+    )
+    assert transitioned.status_code == 200
+    assert transitioned.json()["status"] == "対応不要"
+    assert transitioned.json()["non_remediation_reason"] == "リスク受容"

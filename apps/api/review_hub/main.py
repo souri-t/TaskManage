@@ -79,6 +79,7 @@ def finding_dict(finding: Finding, repository_name: str) -> dict:
         "detection_count": finding.detection_count,
         "recurrence_count": finding.recurrence_count,
         "ai_confidence": finding.ai_confidence,
+        "non_remediation_reason": finding.non_remediation_reason,
         "codex_fix_requested": finding.codex_fix_requested_at is not None,
         "codex_fix_requested_at": finding.codex_fix_requested_at,
         "codex_fix_request_note": finding.codex_fix_request_note,
@@ -294,6 +295,25 @@ def list_repositories(session: DBSession) -> dict:
     }
 
 
+@app.get("/api/v1/symbols")
+def list_symbols(
+    session: DBSession,
+    repository: str = Query(min_length=1),
+    file_path: str | None = None,
+) -> dict:
+    conditions = [Repository.name == repository]
+    if file_path:
+        conditions.append(Finding.file_path == file_path)
+    rows = session.scalars(
+        select(Finding.symbol)
+        .join(Repository)
+        .where(*conditions)
+        .distinct()
+        .order_by(Finding.symbol)
+    )
+    return {"items": list(rows)}
+
+
 def get_finding_or_404(session: Session, finding_id: str) -> Finding:
     finding = session.get(Finding, finding_id)
     if not finding:
@@ -364,6 +384,10 @@ def transition_finding(
             )
         previous = finding.status
         finding.status = data.status
+        if data.status == "対応不要":
+            finding.non_remediation_reason = data.non_remediation_reason
+        elif previous == "対応不要":
+            finding.non_remediation_reason = None
         finding.updated_by = HUMAN_SOURCE
         add_audit(
             session,
@@ -373,7 +397,10 @@ def transition_finding(
             actor_type="human",
             actor_label=HUMAN_SOURCE,
             previous={"status": previous},
-            resulting={"status": data.status},
+            resulting={
+                "status": data.status,
+                "non_remediation_reason": finding.non_remediation_reason,
+            },
             reason=data.reason,
         )
         repository = session.get(Repository, finding.repository_id)
@@ -386,8 +413,8 @@ def transition_finding(
 def request_codex_fix(finding_id: str, data: CodexFixRequestInput) -> dict:
     with write_lock, SessionLocal() as session, session.begin():
         finding = get_finding_or_404(session, finding_id)
-        if finding.status != "対応対象":
-            raise HTTPException(status_code=409, detail="対応対象の指摘だけをCodexへ依頼できます")
+        if finding.status != "対応予定":
+            raise HTTPException(status_code=409, detail="対応予定の指摘だけをCodexへ依頼できます")
         was_requested = finding.codex_fix_requested_at is not None
         finding.codex_fix_requested_at = datetime.now(timezone.utc)
         finding.codex_fix_request_note = data.note
@@ -414,7 +441,7 @@ def cancel_codex_fix_request(finding_id: str) -> dict:
         finding = get_finding_or_404(session, finding_id)
         if finding.codex_fix_requested_at is None:
             raise HTTPException(status_code=409, detail="Codex修正依頼は作成されていません")
-        if finding.status != "対応対象":
+        if finding.status != "対応予定":
             raise HTTPException(status_code=409, detail="着手済みのCodex修正依頼は解除できません")
         finding.codex_fix_requested_at = None
         finding.codex_fix_request_note = None
@@ -433,14 +460,14 @@ def cancel_codex_fix_request(finding_id: str) -> dict:
 def start_codex_fix(finding_id: str) -> dict:
     with write_lock, SessionLocal() as session, session.begin():
         finding = get_finding_or_404(session, finding_id)
-        if finding.status != "対応対象" or finding.codex_fix_requested_at is None:
-            raise HTTPException(status_code=409, detail="依頼済みかつ対応対象の指摘だけを着手できます")
+        if finding.status != "対応予定" or finding.codex_fix_requested_at is None:
+            raise HTTPException(status_code=409, detail="依頼済みかつ対応予定の指摘だけを着手できます")
         finding.status = "対応中"
         finding.updated_by = "Codex"
         add_audit(
             session, finding_id=finding.id, review_run_id=None,
             event_type="codex_fix_started", actor_type="automation", actor_label="Codex",
-            previous={"status": "対応対象"}, resulting={"status": "対応中"},
+            previous={"status": "対応予定"}, resulting={"status": "対応中"},
         )
         repository = session.get(Repository, finding.repository_id)
         assert repository is not None
@@ -453,14 +480,14 @@ def complete_codex_fix(finding_id: str, data: CodexFixCompletionInput) -> dict:
         finding = get_finding_or_404(session, finding_id)
         if finding.status != "対応中" or finding.codex_fix_requested_at is None:
             raise HTTPException(status_code=409, detail="Codexが着手した指摘だけを完了できます")
-        finding.status = "修正確認中"
+        finding.status = "修正完了"
         finding.codex_fix_requested_at = None
         finding.codex_fix_request_note = None
         finding.updated_by = "Codex"
         add_audit(
             session, finding_id=finding.id, review_run_id=None,
             event_type="codex_fix_completed", actor_type="automation", actor_label="Codex",
-            previous={"status": "対応中"}, resulting={"status": "修正確認中"},
+            previous={"status": "対応中"}, resulting={"status": "修正完了"},
             reason=data.summary,
         )
         repository = session.get(Repository, finding.repository_id)
@@ -618,7 +645,7 @@ def get_review_run(run_id: str, session: DBSession) -> dict:
 
 @app.get("/api/v1/dashboard/summary")
 def dashboard_summary(session: DBSession) -> dict:
-    open_statuses = ("新規", "確認中", "対応対象", "対応中", "修正確認中", "保留")
+    open_statuses = ("新規", "対応予定", "対応中", "修正完了", "保留")
     counts = {
         "open": int(
             session.scalar(
@@ -643,7 +670,7 @@ def dashboard_summary(session: DBSession) -> dict:
         ),
         "verification": int(
             session.scalar(
-                select(func.count(Finding.id)).where(Finding.status == "修正確認中")
+                select(func.count(Finding.id)).where(Finding.status == "修正完了")
             )
             or 0
         ),
