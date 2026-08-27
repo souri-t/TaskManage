@@ -789,6 +789,54 @@ button {
 
 .timeline {
   display: grid;
+  margin-top: 12px;
+  padding: 12px 0 0 2px;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-details {
+  padding-bottom: 0;
+}
+
+.timeline-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.timeline-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.timeline-details summary::before {
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 160ms ease;
+}
+
+.timeline-details[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.timeline-summary {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.timeline-empty {
+  margin: 0;
+  padding-bottom: 2px;
 }
 
 .timeline-item {

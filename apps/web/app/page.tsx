@@ -117,6 +117,7 @@ export default function Home() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selected, setSelected] = useState<Finding | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [timelineFindingId, setTimelineFindingId] = useState<string | null>(null);
   const [runs, setRuns] = useState<ReviewRun[]>([]);
   const [repositories, setRepositories] = useState<RepositoryOption[]>([]);
   const [guidelines, setGuidelines] = useState<ReviewGuideline[]>([]);
@@ -176,14 +177,16 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [refresh]);
 
+  const timelineOpen = selected?.id === timelineFindingId;
+
   useEffect(() => {
-    if (!selected) {
+    if (!selected || !timelineOpen) {
       return;
     }
     api<{ items: TimelineEvent[] }>(`/api/v1/findings/${selected.id}/timeline`)
       .then((payload) => setTimeline(payload.items))
       .catch(() => setTimeline([]));
-  }, [selected]);
+  }, [selected, timelineOpen]);
 
   const transition = async (status: string, nonRemediationReason?: string) => {
     if (!selected || status === selected.status) return;
@@ -311,6 +314,7 @@ export default function Home() {
             repositories={repositories}
             selected={selected}
             timeline={timeline}
+            timelineOpen={timelineOpen}
             search={search}
             repositoryFilter={repositoryFilter}
             statusFilter={statusFilter}
@@ -319,7 +323,11 @@ export default function Home() {
             onRepositoryFilter={setRepositoryFilter}
             onStatusFilter={setStatusFilter}
             onSeverityFilter={setSeverityFilter}
-            onSelect={setSelected}
+            onSelect={(finding) => {
+              setSelected(finding);
+              setTimeline([]);
+            }}
+            onTimelineOpenChange={(open) => setTimelineFindingId(open ? selected?.id || null : null)}
             onTransition={transition}
             onDuplicate={markDuplicate}
             onRequestCodexFix={requestCodexFix}
@@ -424,6 +432,7 @@ function FindingsView({
   repositories,
   selected,
   timeline,
+  timelineOpen,
   search,
   repositoryFilter,
   statusFilter,
@@ -433,6 +442,7 @@ function FindingsView({
   onStatusFilter,
   onSeverityFilter,
   onSelect,
+  onTimelineOpenChange,
   onTransition,
   onDuplicate,
   onRequestCodexFix,
@@ -442,6 +452,7 @@ function FindingsView({
   repositories: RepositoryOption[];
   selected: Finding | null;
   timeline: TimelineEvent[];
+  timelineOpen: boolean;
   search: string;
   repositoryFilter: string;
   statusFilter: string;
@@ -451,6 +462,7 @@ function FindingsView({
   onStatusFilter: (value: string) => void;
   onSeverityFilter: (value: string) => void;
   onSelect: (finding: Finding) => void;
+  onTimelineOpenChange: (open: boolean) => void;
   onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
@@ -514,10 +526,12 @@ function FindingsView({
           finding={selected}
           findings={findings}
           timeline={timeline}
+          timelineOpen={timelineOpen}
           onTransition={onTransition}
           onDuplicate={onDuplicate}
           onRequestCodexFix={onRequestCodexFix}
           onCancelCodexFix={onCancelCodexFix}
+          onTimelineOpenChange={onTimelineOpenChange}
         />
       </div>
     </section>
@@ -528,18 +542,22 @@ function FindingDetailView({
   finding,
   findings,
   timeline,
+  timelineOpen,
   onTransition,
   onDuplicate,
   onRequestCodexFix,
   onCancelCodexFix,
+  onTimelineOpenChange,
 }: {
   finding: Finding | null;
   findings: Finding[];
   timeline: TimelineEvent[];
+  timelineOpen: boolean;
   onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
+  onTimelineOpenChange: (open: boolean) => void;
 }) {
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [duplicateTarget, setDuplicateTarget] = useState("");
@@ -661,8 +679,15 @@ function FindingDetailView({
         {showMarkdown ? <pre className="markdown-source">{finding.remediation_markdown}</pre> : <MarkdownView value={finding.remediation_markdown} />}
       </div>
 
-      <div className="detail-section">
-        <h3>タイムライン</h3>
+      <details
+        className="detail-section timeline-details"
+        open={timelineOpen}
+        onToggle={(event) => onTimelineOpenChange(event.currentTarget.open)}
+      >
+        <summary>
+          <span>変更履歴</span>
+          <span className="timeline-summary">{timelineOpen ? `${timeline.length}件` : "必要なときに表示"}</span>
+        </summary>
         <div className="timeline">
           {timeline.map((event) => (
             <div className="timeline-item" key={event.id}>
@@ -670,8 +695,9 @@ function FindingDetailView({
               <div><strong>{event.event_type}</strong><p>{event.reason || `${event.actor_label}による更新`}</p><time>{formatDate(event.created_at)} · {event.actor_label}</time></div>
             </div>
           ))}
+          {!timeline.length && <p className="empty timeline-empty">履歴はありません。</p>}
         </div>
-      </div>
+      </details>
     </article>
   );
 }

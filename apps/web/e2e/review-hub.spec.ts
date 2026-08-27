@@ -57,6 +57,10 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
   await expect(page.getByText(`Automated finding ${suffix}`)).toBeVisible();
   await page.getByRole("button", { name: new RegExp(`Automated finding ${suffix}`) }).click();
   await expect(page.getByText("unsafe_call()").first()).toBeVisible();
+  const timeline = page.locator(".timeline-details");
+  await expect(timeline).not.toHaveAttribute("open", "");
+  await timeline.getByText("変更履歴").click();
+  await expect(timeline).toHaveAttribute("open", "");
   await page.getByRole("button", { name: "Markdown" }).click();
   await expect(page.getByText(/```python/)).toBeVisible();
 
