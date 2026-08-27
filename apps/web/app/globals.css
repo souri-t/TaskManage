@@ -800,14 +800,38 @@ button {
 }
 
 .duplicate-control {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 0 20px 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
 }
 
 .duplicate-control select {
-  flex: 1;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 32px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface);
+}
+
+.duplicate-control select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+@media (max-width: 480px) {
+  .duplicate-control {
+    grid-template-columns: 1fr;
+  }
+
+  .duplicate-control .secondary-button {
+    width: 100%;
+  }
 }
 
 .codex-fix-form {
