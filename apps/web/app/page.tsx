@@ -10,12 +10,14 @@ import {
   FileCode2,
   Gauge,
   ListChecks,
+  Maximize2,
+  Minimize2,
   Plus,
   RefreshCw,
   Search,
   X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { type CSSProperties, type PointerEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import { MarkdownView } from "./markdown-view";
 import type { Finding, RepositoryOption, ReviewGuideline, ReviewRun, TimelineEvent } from "./types";
 
@@ -58,6 +60,9 @@ const nonRemediationReasons = [
   "今回対応しない",
   "その他",
 ];
+
+const findingListWidthStorageKey = "review-hub:finding-list-width";
+const defaultFindingListWidth = 460;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -468,6 +473,29 @@ function FindingsView({
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
 }) {
+  const [detailFocused, setDetailFocused] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [findingListWidth, setFindingListWidth] = useState(() => {
+    if (typeof window === "undefined") return defaultFindingListWidth;
+    const storedWidth = Number(window.localStorage.getItem(findingListWidthStorageKey));
+    return Number.isFinite(storedWidth) && storedWidth >= 320 ? storedWidth : defaultFindingListWidth;
+  });
+
+  const updateFindingListWidth = (width: number) => {
+    const nextWidth = Math.round(width);
+    setFindingListWidth(nextWidth);
+    window.localStorage.setItem(findingListWidthStorageKey, String(nextWidth));
+  };
+
+  const resizeFindingList = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isResizing) return;
+    const grid = event.currentTarget.parentElement;
+    if (!grid) return;
+    const bounds = grid.getBoundingClientRect();
+    const maxWidth = Math.max(320, bounds.width - 432);
+    updateFindingListWidth(Math.min(maxWidth, Math.max(320, event.clientX - bounds.left)));
+  };
+
   return (
     <section className="content findings-content">
       <div className="filters">
@@ -497,7 +525,10 @@ function FindingsView({
         </select>
       </div>
 
-      <div className="findings-grid">
+      <div
+        className={`findings-grid${detailFocused ? " detail-focused" : ""}${isResizing ? " resizing" : ""}`}
+        style={{ "--finding-list-width": `${findingListWidth}px` } as CSSProperties}
+      >
         <div className="finding-list">
           <div className="list-head"><span>{findings.length}件</span><span>最終検出順</span></div>
           {findings.map((finding) => (
@@ -521,6 +552,27 @@ function FindingsView({
           {!findings.length && <p className="empty">条件に一致する指摘はありません。</p>}
         </div>
 
+        <div
+          className="finding-resizer"
+          role="separator"
+          aria-label="指摘一覧の幅を調整"
+          aria-orientation="vertical"
+          aria-valuemin={320}
+          aria-valuenow={findingListWidth}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setIsResizing(true);
+          }}
+          onPointerMove={resizeFindingList}
+          onPointerUp={() => setIsResizing(false)}
+          onPointerCancel={() => setIsResizing(false)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") updateFindingListWidth(Math.max(320, findingListWidth - 40));
+            if (event.key === "ArrowRight") updateFindingListWidth(findingListWidth + 40);
+          }}
+        />
+
         <FindingDetailView
           key={selected?.id || "empty"}
           finding={selected}
@@ -532,6 +584,8 @@ function FindingsView({
           onRequestCodexFix={onRequestCodexFix}
           onCancelCodexFix={onCancelCodexFix}
           onTimelineOpenChange={onTimelineOpenChange}
+          detailFocused={detailFocused}
+          onToggleDetailFocus={() => setDetailFocused((current) => !current)}
         />
       </div>
     </section>
@@ -548,6 +602,8 @@ function FindingDetailView({
   onRequestCodexFix,
   onCancelCodexFix,
   onTimelineOpenChange,
+  detailFocused,
+  onToggleDetailFocus,
 }: {
   finding: Finding | null;
   findings: Finding[];
@@ -558,6 +614,8 @@ function FindingDetailView({
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
   onTimelineOpenChange: (open: boolean) => void;
+  detailFocused: boolean;
+  onToggleDetailFocus: () => void;
 }) {
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [duplicateTarget, setDuplicateTarget] = useState("");
@@ -572,7 +630,13 @@ function FindingDetailView({
           <span className="finding-id">{finding.display_id} · {finding.review_source}</span>
           <h2>{finding.title}</h2>
         </div>
-        <SeverityBadge severity={finding.severity} />
+        <div className="detail-header-actions">
+          <button type="button" className="secondary-button detail-focus-button" onClick={onToggleDetailFocus}>
+            {detailFocused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            {detailFocused ? "一覧を表示" : "詳細を拡大"}
+          </button>
+          <SeverityBadge severity={finding.severity} />
+        </div>
       </div>
 
       <div className="metadata">

@@ -57,6 +57,11 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
   await expect(page.getByText(`Automated finding ${suffix}`)).toBeVisible();
   await page.getByRole("button", { name: new RegExp(`Automated finding ${suffix}`) }).click();
   await expect(page.getByText("unsafe_call()").first()).toBeVisible();
+  await page.getByRole("button", { name: "詳細を拡大" }).click();
+  await expect(page.getByRole("button", { name: "一覧を表示" })).toBeVisible();
+  await expect(page.locator(".finding-list")).toBeHidden();
+  await page.getByRole("button", { name: "一覧を表示" }).click();
+  await expect(page.locator(".finding-list")).toBeVisible();
   const timeline = page.locator(".timeline-details");
   await expect(timeline).not.toHaveAttribute("open", "");
   await timeline.getByText("変更履歴").click();

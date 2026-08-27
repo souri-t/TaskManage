@@ -437,9 +437,47 @@ button {
 
 .findings-grid {
   display: grid;
-  grid-template-columns: minmax(340px, 0.95fr) minmax(400px, 1.05fr);
-  gap: 14px;
+  grid-template-columns: minmax(320px, var(--finding-list-width, 460px)) 12px minmax(400px, 1fr);
+  gap: 0;
   align-items: start;
+}
+
+.findings-grid.detail-focused {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.findings-grid.detail-focused .finding-list,
+.findings-grid.detail-focused .finding-resizer {
+  display: none;
+}
+
+.finding-resizer {
+  position: relative;
+  min-height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.finding-resizer::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 1px;
+  background: var(--border);
+  content: "";
+}
+
+.finding-resizer:hover::before,
+.finding-resizer:focus-visible::before,
+.findings-grid.resizing .finding-resizer::before {
+  width: 3px;
+  left: 4px;
+  background: var(--blue);
+}
+
+.findings-grid.resizing {
+  user-select: none;
 }
 
 .finding-list {
@@ -578,6 +616,20 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.detail-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.detail-focus-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 
 .detail-header h2 {
@@ -1137,6 +1189,16 @@ button {
   }
   .findings-grid {
     grid-template-columns: 1fr;
+  }
+  .findings-grid.detail-focused {
+    grid-template-columns: 1fr;
+  }
+  .finding-resizer,
+  .findings-grid.detail-focused .finding-list {
+    display: none;
+  }
+  .detail-focus-button {
+    display: none;
   }
   .detail-panel {
     position: static;
