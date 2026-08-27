@@ -415,22 +415,17 @@ def apply_one(
     )
 
 
-def apply_reconciliation(
-    session_factory,
-    payload: ReconciliationInput,
-    idempotency_key: str,
-) -> dict[str, Any]:
+def existing_run_response(session_factory, idempotency_key: str) -> dict[str, Any] | None:
     with session_factory() as session:
         with session.begin():
             existing = session.scalar(
                 select(ReviewRun).where(ReviewRun.idempotency_key == idempotency_key)
             )
-            if existing:
-                stored = stored_run_response(session, existing)
-            else:
-                stored = None
-        if stored is not None:
-            return stored
+            return stored_run_response(session, existing) if existing else None
+
+
+def create_review_run(session_factory, payload: ReconciliationInput, idempotency_key: str) -> tuple[str, str]:
+    with session_factory() as session:
         with session.begin():
             repository = get_or_create_repository(session, payload.repository)
             guideline = active_guideline(session, payload.review_guideline_id)
@@ -451,8 +446,12 @@ def apply_reconciliation(
             )
             session.add(run)
             session.flush()
-            run_id = run.id
-            repository_id = repository.id
+            return run.id, repository.id
+
+
+def apply_findings(
+    session_factory, payload: ReconciliationInput, run_id: str, repository_id: str
+) -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     for index, item in enumerate(payload.findings):
@@ -488,6 +487,10 @@ def apply_reconciliation(
         result["index"] = index
         results.append(result)
 
+    return results
+
+
+def finalize_review_run(session_factory, payload: ReconciliationInput, run_id: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     response = build_response(payload, results, dry=False, review_run_id=run_id)
     with session_factory() as session:
         with session.begin():
@@ -496,6 +499,19 @@ def apply_reconciliation(
             run.status = response["status"]
             run.summary = response["summary"]
     return response
+
+
+def apply_reconciliation(
+    session_factory,
+    payload: ReconciliationInput,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    stored = existing_run_response(session_factory, idempotency_key)
+    if stored is not None:
+        return stored
+    run_id, repository_id = create_review_run(session_factory, payload, idempotency_key)
+    results = apply_findings(session_factory, payload, run_id, repository_id)
+    return finalize_review_run(session_factory, payload, run_id, results)
 
 
 def stored_run_response(session: Session, run: ReviewRun) -> dict[str, Any]:

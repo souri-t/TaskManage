@@ -193,62 +193,12 @@ export default function Home() {
       .catch(() => setTimeline([]));
   }, [selected, timelineOpen]);
 
-  const transition = async (status: string, nonRemediationReason?: string) => {
-    if (!selected || status === selected.status) return;
-    try {
-      const updated = await api<Finding>(
-        `/api/v1/findings/${selected.id}/transitions`,
-        { method: "POST", body: JSON.stringify({ status, non_remediation_reason: nonRemediationReason }) },
-      );
-      setSelected(updated);
-      await refresh();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "状態変更に失敗しました");
-    }
-  };
-
-  const markDuplicate = async (targetFindingId: string) => {
-    if (!selected || !targetFindingId) return;
-    const reason = window.prompt("重複と判断した理由を入力してください");
-    if (!reason) return;
-    try {
-      await api(`/api/v1/findings/${selected.id}/duplicate`, {
-        method: "POST",
-        body: JSON.stringify({
-          target_finding_id: targetFindingId,
-          reason,
-        }),
-      });
-      await refresh();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "重複元の設定に失敗しました");
-    }
-  };
-
-  const requestCodexFix = async (note: string | null) => {
-    if (!selected) return;
-    try {
-      const updated = await api<Finding>(
-        `/api/v1/findings/${selected.id}/codex-fix-request`,
-        { method: "POST", body: JSON.stringify({ note }) },
-      );
-      setSelected(updated);
-      await refresh();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Codex修正依頼に失敗しました");
-    }
-  };
-
-  const cancelCodexFix = async () => {
-    if (!selected) return;
-    try {
-      const updated = await api<Finding>(`/api/v1/findings/${selected.id}/codex-fix-request`, { method: "DELETE" });
-      setSelected(updated);
-      await refresh();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Codex修正依頼の解除に失敗しました");
-    }
-  };
+  const { transition, changeSeverity, markDuplicate, requestCodexFix, cancelCodexFix } = useFindingActions({
+    selected,
+    setSelected,
+    refresh,
+    setError,
+  });
 
   const title = {
     dashboard: "ダッシュボード",
@@ -334,6 +284,7 @@ export default function Home() {
             }}
             onTimelineOpenChange={(open) => setTimelineFindingId(open ? selected?.id || null : null)}
             onTransition={transition}
+            onSeverityChange={changeSeverity}
             onDuplicate={markDuplicate}
             onRequestCodexFix={requestCodexFix}
             onCancelCodexFix={cancelCodexFix}
@@ -371,6 +322,56 @@ export default function Home() {
       )}
     </div>
   );
+}
+
+function useFindingActions({
+  selected,
+  setSelected,
+  refresh,
+  setError,
+}: {
+  selected: Finding | null;
+  setSelected: (finding: Finding) => void;
+  refresh: () => Promise<void>;
+  setError: (error: string) => void;
+}) {
+  const update = async (path: string, init: RequestInit, failureMessage: string) => {
+    try {
+      const updated = await api<Finding>(path, init);
+      setSelected(updated);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : failureMessage);
+    }
+  };
+  const transition = async (status: string, nonRemediationReason?: string) => {
+    if (!selected || status === selected.status) return;
+    await update(`/api/v1/findings/${selected.id}/transitions`, { method: "POST", body: JSON.stringify({ status, non_remediation_reason: nonRemediationReason }) }, "状態変更に失敗しました");
+  };
+  const changeSeverity = async (severity: Finding["severity"]) => {
+    if (!selected || severity === selected.severity) return;
+    await update(`/api/v1/findings/${selected.id}/severity`, { method: "PATCH", body: JSON.stringify({ severity }) }, "重要度変更に失敗しました");
+  };
+  const markDuplicate = async (targetFindingId: string) => {
+    if (!selected || !targetFindingId) return;
+    const reason = window.prompt("重複と判断した理由を入力してください");
+    if (!reason) return;
+    try {
+      await api(`/api/v1/findings/${selected.id}/duplicate`, { method: "POST", body: JSON.stringify({ target_finding_id: targetFindingId, reason }) });
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "重複元の設定に失敗しました");
+    }
+  };
+  const requestCodexFix = async (note: string | null) => {
+    if (!selected) return;
+    await update(`/api/v1/findings/${selected.id}/codex-fix-request`, { method: "POST", body: JSON.stringify({ note }) }, "Codex修正依頼に失敗しました");
+  };
+  const cancelCodexFix = async () => {
+    if (!selected) return;
+    await update(`/api/v1/findings/${selected.id}/codex-fix-request`, { method: "DELETE" }, "Codex修正依頼の解除に失敗しました");
+  };
+  return { transition, changeSeverity, markDuplicate, requestCodexFix, cancelCodexFix };
 }
 
 function DashboardView({
@@ -449,6 +450,7 @@ function FindingsView({
   onSelect,
   onTimelineOpenChange,
   onTransition,
+  onSeverityChange,
   onDuplicate,
   onRequestCodexFix,
   onCancelCodexFix,
@@ -469,6 +471,7 @@ function FindingsView({
   onSelect: (finding: Finding) => void;
   onTimelineOpenChange: (open: boolean) => void;
   onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
+  onSeverityChange: (severity: Finding["severity"]) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
@@ -580,6 +583,7 @@ function FindingsView({
           timeline={timeline}
           timelineOpen={timelineOpen}
           onTransition={onTransition}
+          onSeverityChange={onSeverityChange}
           onDuplicate={onDuplicate}
           onRequestCodexFix={onRequestCodexFix}
           onCancelCodexFix={onCancelCodexFix}
@@ -598,6 +602,7 @@ function FindingDetailView({
   timeline,
   timelineOpen,
   onTransition,
+  onSeverityChange,
   onDuplicate,
   onRequestCodexFix,
   onCancelCodexFix,
@@ -610,6 +615,7 @@ function FindingDetailView({
   timeline: TimelineEvent[];
   timelineOpen: boolean;
   onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
+  onSeverityChange: (severity: Finding["severity"]) => Promise<void>;
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
@@ -635,7 +641,16 @@ function FindingDetailView({
             {detailFocused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             {detailFocused ? "一覧を表示" : "詳細を拡大"}
           </button>
-          <SeverityBadge severity={finding.severity} />
+          <label className="severity-control">
+            <span className="sr-only">重要度</span>
+            <select
+              aria-label="重要度"
+              value={finding.severity}
+              onChange={(event) => void onSeverityChange(event.target.value as Finding["severity"])}
+            >
+              {["Critical", "High", "Medium", "Low"].map((severity) => <option key={severity}>{severity}</option>)}
+            </select>
+          </label>
         </div>
       </div>
 
@@ -783,7 +798,7 @@ function RunsView({ runs }: { runs: ReviewRun[] }) {
               <td>{run.review_source}</td>
                   <td>{run.reviewed_file_count}</td>
                   <td>{String(run.summary.detected || 0)}</td>
-                  <td><span className="badge">{run.status}</span><time>{formatDate(run.detected_at)}</time></td>
+                  <td><span className="badge">{run.status.toUpperCase()}</span><time>{formatDate(run.detected_at)}</time></td>
                 </tr>
               ))}
             </tbody>

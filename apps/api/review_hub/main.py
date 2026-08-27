@@ -27,6 +27,7 @@ from .schemas import (
     ReconciliationInput,
     ReviewGuidelineInput,
     ReviewGuidelineUpdate,
+    SeverityUpdateInput,
     TransitionInput,
 )
 from .service import (
@@ -402,6 +403,31 @@ def transition_finding(
                 "non_remediation_reason": finding.non_remediation_reason,
             },
             reason=data.reason,
+        )
+        repository = session.get(Repository, finding.repository_id)
+        assert repository is not None
+        result = finding_dict(finding, repository.name)
+    return result
+
+
+@app.patch("/api/v1/findings/{finding_id}/severity")
+def update_finding_severity(
+    finding_id: str, data: SeverityUpdateInput
+) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        previous = finding.severity
+        finding.severity = data.severity
+        finding.updated_by = HUMAN_SOURCE
+        add_audit(
+            session,
+            finding_id=finding.id,
+            review_run_id=None,
+            event_type="severity_changed",
+            actor_type="human",
+            actor_label=HUMAN_SOURCE,
+            previous={"severity": previous},
+            resulting={"severity": finding.severity},
         )
         repository = session.get(Repository, finding.repository_id)
         assert repository is not None

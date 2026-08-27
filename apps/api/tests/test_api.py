@@ -227,6 +227,22 @@ def test_codex_fix_request_is_flagged_and_completed():
     ]
 
 
+def test_finding_severity_can_be_changed_after_registration():
+    created = client.post(
+        "/api/v1/reconciliations", json=payload(), headers={"Idempotency-Key": "severity-change"}
+    )
+    finding_id = created.json()["results"][0]["finding_id"]
+
+    updated = client.patch(
+        f"/api/v1/findings/{finding_id}/severity", json={"severity": "Low"}
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["severity"] == "Low"
+    timeline = client.get(f"/api/v1/findings/{finding_id}/timeline")
+    assert timeline.json()["items"][0]["event_type"] == "severity_changed"
+
+
 def test_findings_can_be_filtered_by_repository():
     first = client.post(
         "/api/v1/findings",

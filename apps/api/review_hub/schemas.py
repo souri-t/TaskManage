@@ -95,6 +95,10 @@ class TransitionInput(BaseModel):
         return self
 
 
+class SeverityUpdateInput(BaseModel):
+    severity: Literal["Critical", "High", "Medium", "Low"]
+
+
 class CodexFixRequestInput(BaseModel):
     note: str | None = Field(default=None, max_length=5000)
 
