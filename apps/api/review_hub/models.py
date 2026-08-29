@@ -167,6 +167,8 @@ class Finding(Base):
     occurrences: Mapped[list[FindingOccurrence]] = relationship(
         back_populates="finding", cascade="all, delete-orphan"
     )
+    artifacts: Mapped[list[FindingArtifact]] = relationship(back_populates="finding")
+    content_versions: Mapped[list[FindingContentVersion]] = relationship(back_populates="finding")
 
     @property
     def display_id(self) -> str:
@@ -260,3 +262,58 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+
+
+class FindingArtifact(Base):
+    __tablename__ = "finding_artifacts"
+    __table_args__ = (UniqueConstraint("sequence", name="uq_artifact_sequence"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    finding_id: Mapped[str] = mapped_column(ForeignKey("findings.id"), nullable=False, index=True)
+    blob: Mapped[bytes] = mapped_column(nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finding: Mapped[Finding] = relationship(back_populates="artifacts")
+
+    @property
+    def display_id(self) -> str:
+        return f"ART-{self.sequence:06d}"
+
+
+class FindingContentVersion(Base):
+    __tablename__ = "finding_content_versions"
+    __table_args__ = (UniqueConstraint("finding_id", "version", name="uq_content_version"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    finding_id: Mapped[str] = mapped_column(ForeignKey("findings.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    finding: Mapped[Finding] = relationship(back_populates="content_versions")
+    references: Mapped[list[FindingArtifactReference]] = relationship(back_populates="content_version")
+
+
+class FindingArtifactReference(Base):
+    __tablename__ = "finding_artifact_references"
+    __table_args__ = (UniqueConstraint("content_version_id", "artifact_id", name="uq_content_artifact_reference"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    content_version_id: Mapped[str] = mapped_column(ForeignKey("finding_content_versions.id"), nullable=False, index=True)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("finding_artifacts.id"), nullable=False, index=True)
+    content_version: Mapped[FindingContentVersion] = relationship(back_populates="references")
+    artifact: Mapped[FindingArtifact] = relationship()
+
+
+class DiagramRenderCache(Base):
+    __tablename__ = "diagram_render_cache"
+    __table_args__ = (UniqueConstraint("engine", "source_sha256", "output_format", name="uq_diagram_render_cache"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    engine: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    output_format: Mapped[str] = mapped_column(String(16), nullable=False)
+    svg: Mapped[bytes] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -780,6 +780,21 @@ button {
   font-style: italic;
 }
 
+.diagram-block { margin: 12px 0; min-height: 32px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--surface); }
+.diagram-block img { display: block; max-width: 100%; height: auto; }
+.diagram-error { color: var(--red); }
+.diagram-error pre { color: var(--text); white-space: pre-wrap; }
+.attachment-image { display: block; max-width: 100%; margin: 10px 0; padding: 0; border: 0; background: transparent; }
+.attachment-image img { display: block; max-width: 100%; max-height: 420px; border: 1px solid var(--border); border-radius: 8px; object-fit: contain; }
+.image-lightbox { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(0,0,0,.75); }
+.image-lightbox img { max-width: 95vw; max-height: 92vh; }
+.content-editor { display: grid; gap: 8px; }
+.content-editor textarea { width: 100%; min-height: 260px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.content-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.content-version-history { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.content-version-history h3 { margin-bottom: 8px; }
+.content-version-history details { margin: 6px 0; }
+
 @media (prefers-color-scheme: dark) {
   .shiki,
   .shiki span {

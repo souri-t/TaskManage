@@ -4,6 +4,7 @@ export type Finding = {
   repository: string;
   title: string;
   description_markdown: string;
+  content_version: number;
   severity: "Critical" | "High" | "Medium" | "Low";
   category: string;
   rule_id: string;

@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { type CSSProperties, type PointerEvent, FormEvent, useCallback, useEffect, useState } from "react";
+import { type CSSProperties, type PointerEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { MarkdownView } from "./markdown-view";
 import type { Finding, RepositoryOption, ReviewGuideline, ReviewRun, TimelineEvent } from "./types";
 
@@ -199,6 +199,11 @@ export default function Home() {
     refresh,
     setError,
   });
+  const updateContent = async (finding: Finding, description_markdown: string) => {
+    const updated = await api<Finding>(`/api/v1/findings/${finding.id}/content`, { method: "PATCH", body: JSON.stringify({ description_markdown, expected_version: finding.content_version }) });
+    setSelected(updated);
+    setFindings((items) => items.map((item) => item.id === updated.id ? updated : item));
+  };
 
   const title = {
     dashboard: "ダッシュボード",
@@ -288,6 +293,7 @@ export default function Home() {
             onDuplicate={markDuplicate}
             onRequestCodexFix={requestCodexFix}
             onCancelCodexFix={cancelCodexFix}
+            onContentUpdate={updateContent}
           />
         )}
         {view === "runs" && <RunsView runs={runs} />}
@@ -454,6 +460,7 @@ function FindingsView({
   onDuplicate,
   onRequestCodexFix,
   onCancelCodexFix,
+  onContentUpdate,
 }: {
   findings: Finding[];
   repositories: RepositoryOption[];
@@ -475,6 +482,7 @@ function FindingsView({
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
+  onContentUpdate: (finding: Finding, content: string) => Promise<void>;
 }) {
   const [detailFocused, setDetailFocused] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -510,7 +518,7 @@ function FindingsView({
       <div className="filters">
         <label className="search-field">
           <Search size={16} />
-          <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="タイトル、ファイル、Rule ID" />
+          <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="タイトル、ファイル、観点ID" />
         </label>
         <select
           aria-label="リポジトリ"
@@ -593,6 +601,7 @@ function FindingsView({
           onDuplicate={onDuplicate}
           onRequestCodexFix={onRequestCodexFix}
           onCancelCodexFix={onCancelCodexFix}
+          onContentUpdate={onContentUpdate}
           onTimelineOpenChange={onTimelineOpenChange}
           detailFocused={detailFocused}
           onToggleDetailFocus={() => setDetailFocused((current) => !current)}
@@ -612,6 +621,7 @@ function FindingDetailView({
   onDuplicate,
   onRequestCodexFix,
   onCancelCodexFix,
+  onContentUpdate,
   onTimelineOpenChange,
   detailFocused,
   onToggleDetailFocus,
@@ -625,6 +635,7 @@ function FindingDetailView({
   onDuplicate: (targetFindingId: string) => Promise<void>;
   onRequestCodexFix: (note: string | null) => Promise<void>;
   onCancelCodexFix: () => Promise<void>;
+  onContentUpdate: (finding: Finding, content: string) => Promise<void>;
   onTimelineOpenChange: (open: boolean) => void;
   detailFocused: boolean;
   onToggleDetailFocus: () => void;
@@ -634,6 +645,19 @@ function FindingDetailView({
   const [fixNote, setFixNote] = useState("");
   const [nonRemediationReason, setNonRemediationReason] = useState("");
   const [selectingNonRemediation, setSelectingNonRemediation] = useState(false);
+  const [editingContent, setEditingContent] = useState(false);
+  const [contentDraft, setContentDraft] = useState("");
+  const [contentError, setContentError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const contentEditorRef = useRef<HTMLTextAreaElement>(null);
+  const insertContent = (snippet: string) => {
+    const editor = contentEditorRef.current;
+    const start = editor?.selectionStart ?? contentDraft.length;
+    const end = editor?.selectionEnd ?? contentDraft.length;
+    const next = `${contentDraft.slice(0, start)}${snippet}${contentDraft.slice(end)}`;
+    setContentDraft(next);
+    requestAnimationFrame(() => { editor?.focus(); editor?.setSelectionRange(start + snippet.length, start + snippet.length); });
+  };
   if (!finding) return <article className="detail-panel empty-detail">指摘を選択してください。</article>;
   return (
     <article className="detail-panel">
@@ -668,10 +692,10 @@ function FindingDetailView({
           }
           void onTransition(event.target.value);
         }}>{statusOptions.map((status) => <option key={status} disabled={status !== finding.status && !(transitionOptions[finding.status] || []).includes(status)}>{status}</option>)}</select></div>
-        <div><span>Repository</span><strong>{finding.repository}</strong></div>
+        <div><span>リポジトリ</span><strong>{finding.repository}</strong></div>
         <div><span>ファイル</span><strong>{formatLocation(finding.file_path, finding.line_number)}</strong></div>
         <div><span>シンボル</span><strong>{finding.symbol}</strong></div>
-        <div><span>Rule</span><strong>{finding.rule_id}</strong></div>
+        <div><span>観点ID</span><strong>{finding.rule_id}</strong></div>
         <div><span>検出</span><strong>{finding.detection_count}回 / 再発{finding.recurrence_count}回</strong></div>
       </div>
 
@@ -735,7 +759,7 @@ function FindingDetailView({
           {finding.codex_fix_requested ? (
             <>
               <p>Codexへの修正を依頼済みです。</p>
-              {finding.codex_fix_request_note && <MarkdownView value={finding.codex_fix_request_note} />}
+              {finding.codex_fix_request_note && <MarkdownView value={finding.codex_fix_request_note} findingId={finding.id} />}
               <button type="button" className="secondary-button" onClick={() => void onCancelCodexFix()}>依頼を解除</button>
             </>
           ) : (
@@ -748,8 +772,8 @@ function FindingDetailView({
       )}
 
       <div className="detail-section">
-        <div className="section-title"><h3>指摘内容</h3><button className="text-button" onClick={() => setShowMarkdown(!showMarkdown)}>{showMarkdown ? "プレビュー" : "Markdown"}</button></div>
-        {showMarkdown ? <pre className="markdown-source">{finding.description_markdown}</pre> : <MarkdownView value={finding.description_markdown} />}
+        <div className="section-title"><h3>指摘内容</h3><div><button className="text-button" onClick={() => setShowMarkdown(!showMarkdown)}>{showMarkdown ? "プレビュー" : "Markdown"}</button><button className="text-button" onClick={() => { setContentDraft(finding.description_markdown); setEditingContent(!editingContent); }}>編集</button></div></div>
+        {editingContent ? <div className="content-editor"><textarea ref={contentEditorRef} aria-label="指摘内容（Markdown）" value={contentDraft} onChange={(event) => setContentDraft(event.target.value)} rows={14} /><div className="content-editor-actions"><label className="secondary-button">画像を追加<input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); setContentError(""); const data = new FormData(); data.append("file", file); try { const response = await fetch(`/api/v1/findings/${finding.id}/artifacts`, { method: "POST", body: data }); const result = await response.json(); if (!response.ok) throw new Error(result.detail); insertContent(result.markdown); } catch (reason) { setContentError(reason instanceof Error ? reason.message : "画像の追加に失敗しました"); } finally { setUploading(false); } }} /></label><button type="button" className="secondary-button" onClick={() => insertContent("```mermaid\ngraph TD\n  A --> B\n```")}>Mermaidを挿入</button><button type="button" className="secondary-button" onClick={() => insertContent("```plantuml\n@startuml\nAlice -> Bob: message\n@enduml\n```")}>PlantUMLを挿入</button><button type="button" disabled={uploading} onClick={() => void onContentUpdate(finding, contentDraft).then(() => { setEditingContent(false); setContentError(""); }).catch((reason) => setContentError(reason instanceof Error ? reason.message : "保存に失敗しました"))}>保存</button></div>{contentError && <p className="form-error">{contentError}</p>}</div> : (showMarkdown ? <pre className="markdown-source">{finding.description_markdown}</pre> : <MarkdownView value={finding.description_markdown} findingId={finding.id} />)}
       </div>
 
       <details
@@ -769,10 +793,17 @@ function FindingDetailView({
             </div>
           ))}
           {!timeline.length && <p className="empty timeline-empty">履歴はありません。</p>}
+          <ContentVersionHistory findingId={finding.id} />
         </div>
       </details>
     </article>
   );
+}
+
+function ContentVersionHistory({ findingId }: { findingId: string }) {
+  const [versions, setVersions] = useState<Array<{ version: number; description_markdown: string; created_at: string; artifacts: string[] }>>([]);
+  useEffect(() => { api<{ items: Array<{ version: number; description_markdown: string; created_at: string; artifacts: string[] }> }>(`/api/v1/findings/${findingId}/content-versions`).then((result) => setVersions(result.items)).catch(() => setVersions([])); }, [findingId]);
+  return <div className="content-version-history"><h3>本文の履歴</h3>{versions.map((version) => <details key={version.version}><summary>本文 v{version.version} · {formatDate(version.created_at)}{version.artifacts.length ? ` · 添付 ${version.artifacts.join(", ")}` : ""}</summary><MarkdownView value={version.description_markdown} findingId={findingId} /></details>)}</div>;
 }
 
 function RunsView({ runs }: { runs: ReviewRun[] }) {
@@ -914,7 +945,7 @@ function ManualFindingModal({
         <div className="modal-header"><div><span>有識者レビュー</span><h2 id="manual-title">指摘を登録</h2></div><button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={18} /></button></div>
         <form onSubmit={submit}>
           <div className="form-grid">
-            <label><span>Repository</span><select required value={form.repository} onChange={(e) => update("repository", e.target.value)}><option value="">選択してください</option>{repositories.map((repository) => <option key={repository.id} value={repository.name}>{repository.display_name}</option>)}</select></label>
+            <label><span>リポジトリ</span><select required value={form.repository} onChange={(e) => update("repository", e.target.value)}><option value="">選択してください</option>{repositories.map((repository) => <option key={repository.id} value={repository.name}>{repository.display_name}</option>)}</select></label>
             <label><span>重要度</span><select value={form.severity} onChange={(e) => update("severity", e.target.value)}>{["Critical", "High", "Medium", "Low"].map((item) => <option key={item}>{item}</option>)}</select></label>
             <label className="wide"><span>タイトル</span><input required value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
             <label className="wide"><span>ファイルパス</span><input required value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="src/example.py" /></label>

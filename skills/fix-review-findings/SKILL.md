@@ -43,3 +43,12 @@ changes, and test results.
 - Work only in the currently open Git repository and its current branch.
 - Do not complete a finding when tests fail or required validation cannot be run; leave it `対応中` and explain the blocker.
 - Do not make write requests until `readyz` succeeds.
+
+## Rich Markdown
+
+Descriptions may contain Mermaid and PlantUML fenced blocks and images using
+`attachment://ART-000001`. Use `POST /api/v1/markdown/validate` before
+submitting rich Markdown. For a UI change, upload only a screenshot captured
+from a runnable environment through `POST /api/v1/findings/{id}/artifacts` and
+insert the returned Markdown. Do not fabricate screenshots; if capture is not
+useful or unavailable, explain why in the description.

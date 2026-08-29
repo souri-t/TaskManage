@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/review-hub.db"
     code_excerpt_max_lines: int = 50
     code_excerpt_max_bytes: int = 16 * 1024
+    artifact_max_bytes: int = 10 * 1024 * 1024
+    diagram_source_max_bytes: int = 100 * 1024
+    diagram_timeout_seconds: float = 10.0
+    kroki_url: str = "http://kroki:8000"
+    plantuml_url: str = "http://plantuml:8080"
 
     model_config = SettingsConfigDict(
         env_prefix="REVIEW_HUB_",

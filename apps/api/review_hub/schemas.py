@@ -102,6 +102,21 @@ class SeverityUpdateInput(BaseModel):
     severity: Literal["Critical", "High", "Medium", "Low"]
 
 
+class ContentUpdateInput(BaseModel):
+    description_markdown: str = Field(min_length=1, max_length=100_000)
+    expected_version: int = Field(ge=1)
+
+
+class DiagramRenderInput(BaseModel):
+    engine: Literal["mermaid", "plantuml"]
+    source: str = Field(min_length=1, max_length=100_000)
+
+
+class MarkdownValidateInput(BaseModel):
+    finding_id: str
+    description_markdown: str = Field(min_length=1, max_length=100_000)
+
+
 class CodexFixRequestInput(BaseModel):
     note: str | None = Field(default=None, max_length=5000)
 

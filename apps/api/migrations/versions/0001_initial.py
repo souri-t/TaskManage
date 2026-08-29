@@ -18,7 +18,13 @@ def upgrade() -> None:
         tables=[
             table
             for table in Base.metadata.sorted_tables
-            if table.name != "review_guidelines"
+            if table.name not in {
+                "review_guidelines",
+                "finding_artifacts",
+                "finding_content_versions",
+                "finding_artifact_references",
+                "diagram_render_cache",
+            }
         ],
     )
 

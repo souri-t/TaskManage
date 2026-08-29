@@ -30,6 +30,7 @@ from .models import (
     ReviewRunResult,
 )
 from .schemas import FindingInput, ManualFindingInput, ReconciliationInput
+from .rich_content import content_version
 
 
 class ServiceError(RuntimeError):
@@ -293,6 +294,7 @@ def create_finding(
     )
     session.add(finding)
     session.flush()
+    content_version(session, finding)
     add_occurrence(session, finding, run, payload, item)
     add_audit(
         session,
@@ -603,6 +605,7 @@ def create_manual_finding(
     )
     session.add(finding)
     session.flush()
+    content_version(session, finding)
     add_audit(
         session,
         finding_id=finding.id,

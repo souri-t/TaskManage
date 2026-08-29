@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
@@ -14,6 +15,9 @@ from .models import (
     AuditEvent,
     Finding,
     FindingRelation,
+    FindingArtifact,
+    FindingContentVersion,
+    DiagramRenderCache,
     Repository,
     ReviewGuideline,
     ReviewRun,
@@ -28,6 +32,9 @@ from .schemas import (
     ReviewGuidelineInput,
     ReviewGuidelineUpdate,
     SeverityUpdateInput,
+    ContentUpdateInput,
+    DiagramRenderInput,
+    MarkdownValidateInput,
     TransitionInput,
 )
 from .service import (
@@ -38,6 +45,7 @@ from .service import (
     next_guideline_sequence,
     ServiceError,
 )
+from .rich_content import add_content_version, artifact_display_id, content_version, next_artifact_sequence, render_diagram, sha256, validate_image, validate_markdown
 
 
 app = FastAPI(
@@ -56,12 +64,14 @@ DBSession = Annotated[Session, Depends(get_session)]
 
 
 def finding_dict(finding: Finding, repository_name: str) -> dict:
+    version = max(finding.content_versions, key=lambda item: item.version, default=None)
     return {
         "id": finding.id,
         "display_id": finding.display_id,
         "repository": repository_name,
         "title": finding.title,
         "description_markdown": finding.description_markdown,
+        "content_version": version.version if version else 1,
         "severity": finding.severity,
         "category": finding.category,
         "rule_id": finding.rule_id,
@@ -354,6 +364,78 @@ def finding_timeline(finding_id: str, session: DBSession) -> dict:
             for event in events
         ]
     }
+
+
+@app.get("/api/v1/findings/{finding_id}/content-versions")
+def list_content_versions(finding_id: str, session: DBSession) -> dict:
+    get_finding_or_404(session, finding_id)
+    versions = list(session.scalars(select(FindingContentVersion).where(FindingContentVersion.finding_id == finding_id).order_by(FindingContentVersion.version.desc())))
+    return {"items": [{"version": item.version, "description_markdown": item.content_markdown, "sha256": item.content_sha256, "created_by": item.created_by, "created_at": item.created_at, "artifacts": [ref.artifact.display_id for ref in item.references]} for item in versions]}
+
+
+@app.patch("/api/v1/findings/{finding_id}/content")
+def update_finding_content(finding_id: str, data: ContentUpdateInput) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        current = content_version(session, finding)
+        if current.version != data.expected_version:
+            raise HTTPException(status_code=409, detail="本文が更新されています。再読み込みしてください")
+        version = add_content_version(session, finding, data.description_markdown, HUMAN_SOURCE)
+        finding.description_markdown = data.description_markdown
+        finding.updated_by = HUMAN_SOURCE
+        add_audit(session, finding_id=finding.id, review_run_id=None, event_type="content_updated", actor_type="human", actor_label=HUMAN_SOURCE, previous={"content_version": current.version, "content_sha256": current.content_sha256}, resulting={"content_version": version.version, "content_sha256": version.content_sha256})
+        repository = session.get(Repository, finding.repository_id)
+        assert repository is not None
+        return finding_dict(finding, repository.name)
+
+
+@app.post("/api/v1/findings/{finding_id}/artifacts", status_code=201)
+async def upload_artifact(finding_id: str, file: UploadFile = File(...)) -> dict:
+    data = await file.read()
+    mime_type = file.content_type or ""
+    validate_image(data, mime_type)
+    with write_lock, SessionLocal() as session, session.begin():
+        finding = get_finding_or_404(session, finding_id)
+        artifact = FindingArtifact(sequence=next_artifact_sequence(session), finding_id=finding.id, blob=data, mime_type=mime_type, filename=file.filename or "image", size_bytes=len(data), sha256=sha256(data))
+        session.add(artifact)
+        session.flush()
+        return {"artifact_id": artifact.display_id, "mime_type": artifact.mime_type, "size_bytes": artifact.size_bytes, "markdown": f"![{artifact.filename}](attachment://{artifact.display_id})"}
+
+
+@app.get("/api/v1/findings/{finding_id}/artifacts")
+def list_artifacts(finding_id: str, session: DBSession) -> dict:
+    get_finding_or_404(session, finding_id)
+    items = session.scalars(select(FindingArtifact).where(FindingArtifact.finding_id == finding_id).order_by(FindingArtifact.sequence)).all()
+    return {"items": [{"artifact_id": item.display_id, "filename": item.filename, "mime_type": item.mime_type, "size_bytes": item.size_bytes, "sha256": item.sha256, "deleted_at": item.deleted_at} for item in items]}
+
+
+@app.get("/api/v1/findings/{finding_id}/artifacts/{artifact_id}")
+def get_artifact(finding_id: str, artifact_id: str, session: DBSession) -> Response:
+    artifact = session.scalar(select(FindingArtifact).where(FindingArtifact.finding_id == finding_id, FindingArtifact.sequence == artifact_display_id(artifact_id)))
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="添付物が見つかりません")
+    return Response(artifact.blob, media_type=artifact.mime_type, headers={"Content-Disposition": f'inline; filename="{artifact.filename}"'})
+
+
+@app.post("/api/v1/diagram-renders")
+def create_diagram_render(data: DiagramRenderInput) -> dict:
+    with write_lock, SessionLocal() as session, session.begin():
+        result = render_diagram(session, data.engine, data.source)
+        assert isinstance(result, DiagramRenderCache)
+        return {"cache_key": result.id, "url": f"/api/v1/diagram-renders/{result.id}", "cached": result.source_sha256 == sha256(data.source)}
+
+
+@app.get("/api/v1/diagram-renders/{cache_key}")
+def get_diagram_render(cache_key: str, session: DBSession) -> Response:
+    item = session.get(DiagramRenderCache, cache_key)
+    if not item:
+        raise HTTPException(status_code=404, detail="図のキャッシュが見つかりません")
+    return Response(item.svg, media_type="image/svg+xml")
+
+
+@app.post("/api/v1/markdown/validate")
+def markdown_validate(data: MarkdownValidateInput, session: DBSession) -> dict:
+    return validate_markdown(session, get_finding_or_404(session, data.finding_id), data.description_markdown)
 
 
 @app.post("/api/v1/findings", status_code=201)

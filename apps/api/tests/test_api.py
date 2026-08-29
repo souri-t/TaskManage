@@ -349,6 +349,22 @@ def test_manual_finding_can_omit_metadata():
     assert response.json()["rule_id"].startswith("MANUAL-")
 
 
+def test_artifact_upload_and_content_versions():
+    finding = client.post("/api/v1/findings", json={**payload()["findings"][0], "repository": "example/repository"}).json()
+    png = b"\x89PNG\r\n\x1a\n" + b"test"
+    uploaded = client.post(f"/api/v1/findings/{finding['id']}/artifacts", files={"file": ("screen.png", png, "image/png")})
+    assert uploaded.status_code == 201
+    artifact = uploaded.json()
+    assert artifact["markdown"].endswith(f"attachment://{artifact['artifact_id']})")
+    blob = client.get(f"/api/v1/findings/{finding['id']}/artifacts/{artifact['artifact_id']}")
+    assert blob.content == png
+    updated = client.patch(f"/api/v1/findings/{finding['id']}/content", json={"expected_version": finding["content_version"], "description_markdown": f"image\n\n![screen](attachment://{artifact['artifact_id']})"})
+    assert updated.status_code == 200
+    assert updated.json()["content_version"] == 2
+    versions = client.get(f"/api/v1/findings/{finding['id']}/content-versions").json()["items"]
+    assert versions[0]["artifacts"] == [artifact["artifact_id"]]
+
+
 def test_symbols_can_be_filtered_by_repository_and_file_path():
     first = client.post(
         "/api/v1/findings",

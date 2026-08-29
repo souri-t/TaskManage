@@ -5,6 +5,13 @@ description: Review requested source code, structure findings, preview reconcili
 
 # Manage Review Findings
 
+## Rich Markdown
+
+Findings may use Mermaid or PlantUML fenced blocks and `attachment://ART-…`
+image links. Validate them through the Review Hub Markdown validation endpoint
+in dry runs. Upload a captured UI screenshot only when it helps a human review
+the change; never fabricate an image when capture is unavailable.
+
 Use Review Hub as the source of truth for review history. Codex performs the
 review; Review Hub only validates, reconciles, and stores structured findings.
 

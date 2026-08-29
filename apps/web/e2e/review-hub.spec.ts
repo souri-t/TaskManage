@@ -69,7 +69,7 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
   await expect(page.getByText(/```python/)).toBeVisible();
 
   await page.getByRole("button", { name: "有識者指摘" }).click();
-  await page.getByRole("combobox", { name: "Repository" }).selectOption(repository);
+  await page.getByRole("combobox", { name: "リポジトリ" }).selectOption(repository);
   await page.getByRole("textbox", { name: "タイトル" }).fill(`Human finding ${suffix}`);
   await page.getByRole("textbox", { name: "ファイルパス" }).fill("src/human.py");
   await page.getByRole("textbox", { name: "シンボル" }).fill("check");

@@ -13,6 +13,7 @@ services:
         condition: service_healthy
       web:
         condition: service_started
+    networks: [app]
 
   web:
     build:
@@ -27,6 +28,7 @@ services:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
       - web_next:/app/.next
+    networks: [app]
 
   api:
     build:
@@ -35,6 +37,8 @@ services:
     restart: unless-stopped
     environment:
       REVIEW_HUB_DATABASE_URL: sqlite:////data/review-hub.db
+      REVIEW_HUB_KROKI_URL: http://kroki:8000
+      REVIEW_HUB_PLANTUML_URL: http://plantuml:8080
     expose:
       - "8000"
     volumes:
@@ -50,7 +54,53 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    depends_on:
+      plantuml:
+        condition: service_healthy
+      kroki:
+        condition: service_healthy
+    networks: [app, render]
+
+  plantuml:
+    image: plantuml/plantuml-server:jetty
+    restart: unless-stopped
+    expose: ["8080"]
+    environment:
+      PLANTUML_SECURITY_PROFILE: INTERNET
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [render]
+
+  kroki:
+    image: yuzutech/kroki
+    restart: unless-stopped
+    expose: ["8000"]
+    environment:
+      KROKI_MERMAID_HOST: mermaid
+    depends_on:
+      mermaid:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [render]
+
+  mermaid:
+    image: yuzutech/kroki-mermaid
+    restart: unless-stopped
+    expose: ["8002"]
+    networks: [render]
 
 volumes:
   web_node_modules:
   web_next:
+
+networks:
+  app:
+  render:
+    internal: true
