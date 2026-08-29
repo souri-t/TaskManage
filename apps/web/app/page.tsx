@@ -272,6 +272,7 @@ export default function Home() {
           <FindingsView
             findings={findings}
             repositories={repositories}
+            guidelines={guidelines}
             selected={selected}
             timeline={timeline}
             timelineOpen={timelineOpen}
@@ -442,6 +443,7 @@ function DashboardView({
 function FindingsView({
   findings,
   repositories,
+  guidelines,
   selected,
   timeline,
   timelineOpen,
@@ -464,6 +466,7 @@ function FindingsView({
 }: {
   findings: Finding[];
   repositories: RepositoryOption[];
+  guidelines: ReviewGuideline[];
   selected: Finding | null;
   timeline: TimelineEvent[];
   timelineOpen: boolean;
@@ -594,6 +597,7 @@ function FindingsView({
           key={selected?.id || "empty"}
           finding={selected}
           findings={findings}
+          guidelines={guidelines}
           timeline={timeline}
           timelineOpen={timelineOpen}
           onTransition={onTransition}
@@ -614,6 +618,7 @@ function FindingsView({
 function FindingDetailView({
   finding,
   findings,
+  guidelines,
   timeline,
   timelineOpen,
   onTransition,
@@ -628,6 +633,7 @@ function FindingDetailView({
 }: {
   finding: Finding | null;
   findings: Finding[];
+  guidelines: ReviewGuideline[];
   timeline: TimelineEvent[];
   timelineOpen: boolean;
   onTransition: (status: string, nonRemediationReason?: string) => Promise<void>;
@@ -645,6 +651,7 @@ function FindingDetailView({
   const [fixNote, setFixNote] = useState("");
   const [nonRemediationReason, setNonRemediationReason] = useState("");
   const [selectingNonRemediation, setSelectingNonRemediation] = useState(false);
+  const [previewGuideline, setPreviewGuideline] = useState<ReviewGuideline | null>(null);
   const [editingContent, setEditingContent] = useState(false);
   const [contentDraft, setContentDraft] = useState("");
   const [contentError, setContentError] = useState("");
@@ -695,7 +702,7 @@ function FindingDetailView({
         <div><span>リポジトリ</span><strong>{finding.repository}</strong></div>
         <div><span>ファイル</span><strong>{formatLocation(finding.file_path, finding.line_number)}</strong></div>
         <div><span>シンボル</span><strong>{finding.symbol}</strong></div>
-        <div><span>観点ID</span><strong>{finding.rule_id}</strong></div>
+        <div><span>観点ID</span><button type="button" className="finding-guideline-id" onClick={() => setPreviewGuideline(guidelines.find((item) => item.display_id === finding.rule_id) || null)}>{finding.rule_id}</button></div>
         <div><span>検出</span><strong>{finding.detection_count}回 / 再発{finding.recurrence_count}回</strong></div>
       </div>
 
@@ -775,6 +782,8 @@ function FindingDetailView({
         <div className="section-title"><h3>指摘内容</h3><div><button className="text-button" onClick={() => setShowMarkdown(!showMarkdown)}>{showMarkdown ? "プレビュー" : "Markdown"}</button><button className="text-button" onClick={() => { setContentDraft(finding.description_markdown); setEditingContent(!editingContent); }}>編集</button></div></div>
         {editingContent ? <div className="content-editor"><textarea ref={contentEditorRef} aria-label="指摘内容（Markdown）" value={contentDraft} onChange={(event) => setContentDraft(event.target.value)} rows={14} /><div className="content-editor-actions"><label className="secondary-button">画像を追加<input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); setContentError(""); const data = new FormData(); data.append("file", file); try { const response = await fetch(`/api/v1/findings/${finding.id}/artifacts`, { method: "POST", body: data }); const result = await response.json(); if (!response.ok) throw new Error(result.detail); insertContent(result.markdown); } catch (reason) { setContentError(reason instanceof Error ? reason.message : "画像の追加に失敗しました"); } finally { setUploading(false); } }} /></label><button type="button" className="secondary-button" onClick={() => insertContent("```mermaid\ngraph TD\n  A --> B\n```")}>Mermaidを挿入</button><button type="button" className="secondary-button" onClick={() => insertContent("```plantuml\n@startuml\nAlice -> Bob: message\n@enduml\n```")}>PlantUMLを挿入</button><button type="button" disabled={uploading} onClick={() => void onContentUpdate(finding, contentDraft).then(() => { setEditingContent(false); setContentError(""); }).catch((reason) => setContentError(reason instanceof Error ? reason.message : "保存に失敗しました"))}>保存</button></div>{contentError && <p className="form-error">{contentError}</p>}</div> : (showMarkdown ? <pre className="markdown-source">{finding.description_markdown}</pre> : <MarkdownView value={finding.description_markdown} findingId={finding.id} />)}
       </div>
+
+      {previewGuideline && <div className="modal-backdrop" role="presentation" onClick={() => setPreviewGuideline(null)}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="guideline-preview-title" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><span>{previewGuideline.display_id} · v{previewGuideline.version}</span><h2 id="guideline-preview-title">{previewGuideline.title}</h2></div><button className="icon-button" onClick={() => setPreviewGuideline(null)} aria-label="閉じる"><X size={18} /></button></div><div className="guideline-preview-content"><MarkdownView value={previewGuideline.content_markdown} /></div></div></div>}
 
       <details
         className="detail-section timeline-details"
@@ -858,6 +867,7 @@ function GuidelineModal({ guideline, onClose, onSaved }: { guideline: ReviewGuid
   const [title, setTitle] = useState(guideline?.title || "");
   const [content, setContent] = useState(guideline?.content_markdown || "");
   const [active, setActive] = useState(guideline?.is_active ?? true);
+  const [editing, setEditing] = useState(!guideline);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const submit = async (event: FormEvent) => {
@@ -878,12 +888,19 @@ function GuidelineModal({ guideline, onClose, onSaved }: { guideline: ReviewGuid
   };
   return (
     <div className="modal-backdrop" role="presentation"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="guideline-title">
-      <div className="modal-header"><div><span>{guideline ? guideline.display_id : "レビュー観点"}</span><h2 id="guideline-title">{guideline ? "レビュー観点を編集" : "レビュー観点を追加"}</h2></div><button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={18} /></button></div>
-      <form onSubmit={submit}><div className="form-grid">
-        <label className="wide"><span>名称</span><input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例: バックエンド標準レビュー" /></label>
-        <label className="wide"><span>観点（Markdown）</span><textarea required rows={14} value={content} onChange={(event) => setContent(event.target.value)} placeholder={"## 必須観点\n\n- 認可・認証\n- 例外処理\n- 回帰リスク"} /></label>
-        <label><span>状態</span><select value={active ? "active" : "inactive"} onChange={(event) => setActive(event.target.value === "active")}><option value="active">有効</option><option value="inactive">無効</option></select></label>
-      </div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>キャンセル</button><button className="primary-button" disabled={submitting}>{submitting ? "保存中…" : "保存"}</button></div></form>
+      <div className="modal-header"><div><span>{guideline ? guideline.display_id : "レビュー観点"}</span><h2 id="guideline-title">{guideline ? (editing ? "レビュー観点を編集" : guideline.title) : "レビュー観点を追加"}</h2></div><button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={18} /></button></div>
+      {guideline && !editing ? (
+        <>
+          <div className="guideline-preview-content"><MarkdownView value={guideline.content_markdown} /></div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>閉じる</button><button type="button" className="primary-button" onClick={() => setEditing(true)}>編集</button></div>
+        </>
+      ) : (
+        <form onSubmit={submit}><div className="form-grid">
+          <label className="wide"><span>名称</span><input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例: バックエンド標準レビュー" /></label>
+          <label className="wide"><span>観点（Markdown）</span><textarea required rows={14} value={content} onChange={(event) => setContent(event.target.value)} placeholder={"## 必須観点\n\n- 認可・認証\n- 例外処理\n- 回帰リスク"} /></label>
+          <label><span>状態</span><select value={active ? "active" : "inactive"} onChange={(event) => setActive(event.target.value === "active")}><option value="active">有効</option><option value="inactive">無効</option></select></label>
+        </div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={guideline ? () => setEditing(false) : onClose}>キャンセル</button><button className="primary-button" disabled={submitting}>{submitting ? "保存中…" : "保存"}</button></div></form>
+      )}
     </div></div>
   );
 }

@@ -541,6 +541,33 @@ button {
   font-size: 10px;
 }
 
+.finding-guideline-id {
+  display: block;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  overflow-wrap: anywhere;
+  color: var(--green);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guideline-preview-content {
+  padding: 20px 24px 24px;
+  overflow: auto;
+  max-height: 70vh;
+}
+
+.guideline-preview-content + .modal-actions {
+  margin-top: 0;
+  padding: 0 18px 18px;
+}
+
 .file-path {
   display: flex;
   min-width: 0;
