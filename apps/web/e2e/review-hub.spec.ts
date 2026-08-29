@@ -26,8 +26,7 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
     findings: [
       {
         title: `Automated finding ${suffix}`,
-        description: "Evidence with **Markdown**.\n\n```python\nunsafe_call()\n```",
-        remediation: "Use `safe_call()`.",
+        description: "Evidence with **Markdown**.\n\n## 修正案\n\nUse `safe_call()`.\n\n```python\nunsafe_call()\n```",
         severity: "High",
         category: "Correctness",
         rule_id: "E2E-AUTO-001",
@@ -74,9 +73,7 @@ test("findings, markdown, manual registration, transitions, and runs", async ({
   await page.getByRole("textbox", { name: "タイトル" }).fill(`Human finding ${suffix}`);
   await page.getByRole("textbox", { name: "ファイルパス" }).fill("src/human.py");
   await page.getByRole("textbox", { name: "シンボル" }).fill("check");
-  await page.getByRole("textbox", { name: "問題（Markdown）" }).fill("Human evidence");
-  await page.getByRole("textbox", { name: "修正案（Markdown）" }).fill("Fix it");
-  await page.getByRole("textbox", { name: "コードコンテキスト" }).fill("problem()");
+  await page.getByRole("textbox", { name: "指摘内容（Markdown）" }).fill("Human evidence\n\n## 修正案\n\nFix it");
   await page.getByRole("button", { name: "登録", exact: true }).click();
   await expect(
     page.getByRole("button", { name: new RegExp(`Human finding ${suffix}`) }),

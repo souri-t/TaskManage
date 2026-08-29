@@ -62,7 +62,6 @@ def finding_dict(finding: Finding, repository_name: str) -> dict:
         "repository": repository_name,
         "title": finding.title,
         "description_markdown": finding.description_markdown,
-        "remediation_markdown": finding.remediation_markdown,
         "severity": finding.severity,
         "category": finding.category,
         "rule_id": finding.rule_id,

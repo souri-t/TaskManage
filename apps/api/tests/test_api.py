@@ -25,8 +25,7 @@ def payload(code_context: str = "value = lookup(key)\nreturn value.name") -> dic
         "findings": [
             {
                 "title": "Null dereference",
-                "description": "A **problem** exists.",
-                "remediation": "Check the result.",
+                "description": "A **problem** exists.\n\n## 修正案\n\nCheck the result.",
                 "severity": "High",
                 "category": "Correctness",
                 "rule_id": "CORRECTNESS-NULL-001",
@@ -342,6 +341,7 @@ def test_manual_finding_can_omit_metadata():
     manual.pop("line_number")
     manual.pop("category")
     manual.pop("rule_id")
+    manual.pop("code_context")
     response = client.post("/api/v1/findings", json=manual)
     assert response.status_code == 201
     assert response.json()["line_number"] is None

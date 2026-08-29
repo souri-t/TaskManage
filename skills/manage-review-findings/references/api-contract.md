@@ -18,16 +18,18 @@ Send JSON with these top-level fields:
 | `detected_at` | ISO 8601 datetime | Include timezone |
 | `findings` | array | May be empty |
 
-Each finding requires `title`, `description`, `remediation`, `severity`,
+Each finding requires `title`, `description`, `severity`,
 `category`, `rule_id`, `file_path`, `symbol`, `code_context`, and
 `ai_confidence`. `line_number` and `code_language` are optional. When present,
 `line_number` is only the location at detection time; do not use it to identify
 the finding.
 
-`severity` is one of `Critical`, `High`, `Medium`, or `Low`.
+`severity` is one of `Critical`, `High`, `Medium`, or `Low`. Put optional
+sections such as a proposed remediation directly in the Markdown `description`
+(for example, under `## 修正案`).
 `ai_confidence` is an integer from 0 through 100. Use repository-relative,
 normalized paths. Markdown, including fenced code blocks, is accepted in
-`description` and `remediation`.
+`description`.
 
 ```json
 {
@@ -42,8 +44,7 @@ normalized paths. Markdown, including fenced code blocks, is accepted in
   "findings": [
     {
       "title": "Null dereference can occur",
-      "description": "The lookup result is used without checking for null.",
-      "remediation": "Handle the missing value before accessing `name`.",
+      "description": "The lookup result is used without checking for null.\n\n## 修正案\n\nHandle the missing value before accessing `name`.",
       "severity": "High",
       "category": "Correctness",
       "rule_id": "CORRECTNESS-NULL-001",

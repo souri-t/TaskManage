@@ -42,7 +42,7 @@ review; Review Hub only validates, reconciles, and stores structured findings.
 - Do not log or persist the unredacted request body. The API redacts and limits
   `code_context` after calculating its fingerprint.
 - Treat `partial_error` as incomplete registration and list each failed item.
-- Do not alter descriptions or remediation text of an existing automatic
+- Do not alter the description text of an existing automatic
   finding during rediscovery; Review Hub preserves them.
 - Do not resolve semantic duplicate candidates automatically.
 - Use the Review Hub API directly for all reconciliation and registration.

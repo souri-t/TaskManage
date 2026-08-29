@@ -478,11 +478,17 @@ function FindingsView({
 }) {
   const [detailFocused, setDetailFocused] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [findingListWidth, setFindingListWidth] = useState(() => {
-    if (typeof window === "undefined") return defaultFindingListWidth;
-    const storedWidth = Number(window.localStorage.getItem(findingListWidthStorageKey));
-    return Number.isFinite(storedWidth) && storedWidth >= 320 ? storedWidth : defaultFindingListWidth;
-  });
+  const [findingListWidth, setFindingListWidth] = useState(defaultFindingListWidth);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const storedWidth = Number(window.localStorage.getItem(findingListWidthStorageKey));
+      if (Number.isFinite(storedWidth) && storedWidth >= 320) {
+        setFindingListWidth(storedWidth);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const updateFindingListWidth = (width: number) => {
     const nextWidth = Math.round(width);
@@ -742,20 +748,8 @@ function FindingDetailView({
       )}
 
       <div className="detail-section">
-        <div className="section-title"><h3>問題</h3><button className="text-button" onClick={() => setShowMarkdown(!showMarkdown)}>{showMarkdown ? "プレビュー" : "Markdown"}</button></div>
+        <div className="section-title"><h3>指摘内容</h3><button className="text-button" onClick={() => setShowMarkdown(!showMarkdown)}>{showMarkdown ? "プレビュー" : "Markdown"}</button></div>
         {showMarkdown ? <pre className="markdown-source">{finding.description_markdown}</pre> : <MarkdownView value={finding.description_markdown} />}
-      </div>
-
-      {finding.code_excerpt && (
-        <div className="detail-section">
-          <h3>コードコンテキスト</h3>
-          <MarkdownView value={`\`\`\`${finding.code_language || "text"}\n${finding.code_excerpt}\n\`\`\``} />
-        </div>
-      )}
-
-      <div className="detail-section">
-        <h3>修正案</h3>
-        {showMarkdown ? <pre className="markdown-source">{finding.remediation_markdown}</pre> : <MarkdownView value={finding.remediation_markdown} />}
       </div>
 
       <details
@@ -879,11 +873,9 @@ function ManualFindingModal({
     repository: "",
     title: "",
     description: "",
-    remediation: "",
     severity: "Medium",
     file_path: "",
     symbol: "<global>",
-    code_context: "該当コードを入力してください",
     code_language: "",
   });
 
@@ -927,9 +919,7 @@ function ManualFindingModal({
             <label className="wide"><span>タイトル</span><input required value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
             <label className="wide"><span>ファイルパス</span><input required value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="src/example.py" /></label>
             <label><span>シンボル</span><input required list="manual-symbol-options" value={form.symbol} onChange={(e) => update("symbol", e.target.value)} /><datalist id="manual-symbol-options">{form.repository && symbolOptions.map((symbol) => <option key={symbol} value={symbol} />)}</datalist></label>
-            <label className="wide"><span>問題（Markdown）</span><textarea required rows={5} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-            <label className="wide"><span>コードコンテキスト</span><textarea required rows={4} value={form.code_context} onChange={(e) => update("code_context", e.target.value)} /></label>
-            <label className="wide"><span>修正案（Markdown）</span><textarea required rows={4} value={form.remediation} onChange={(e) => update("remediation", e.target.value)} /></label>
+            <label className="wide"><span>指摘内容（Markdown）</span><textarea required rows={8} value={form.description} onChange={(e) => update("description", e.target.value)} placeholder="必要に応じて ## 修正案 などの章を追加できます" /></label>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>キャンセル</button><button className="primary-button" disabled={submitting}>{submitting ? "登録中…" : "登録"}</button></div>

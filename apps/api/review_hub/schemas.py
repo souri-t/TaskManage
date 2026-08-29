@@ -11,7 +11,6 @@ from .domain import AUTOMATION_SOURCES, SEVERITIES, STATUSES, normalize_file_pat
 class FindingInput(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: str = Field(min_length=1, max_length=100_000)
-    remediation: str = Field(min_length=1, max_length=100_000)
     severity: Literal["Critical", "High", "Medium", "Low"]
     category: str = Field(min_length=1, max_length=128)
     rule_id: str = Field(min_length=1, max_length=255)
@@ -67,6 +66,10 @@ class ManualFindingInput(FindingInput):
     category: str | None = Field(default=None, min_length=1, max_length=128)
     rule_id: str | None = Field(default=None, min_length=1, max_length=255)
     detected_at: datetime | None = None
+
+    # Manual findings only require the Markdown body. Code context is optional
+    # because it is an internal fingerprinting aid for automated reviews.
+    code_context: str = Field(default="")
 
 
 class TransitionInput(BaseModel):
@@ -162,7 +165,6 @@ class FindingSummary(OrmModel):
 
 class FindingDetail(FindingSummary):
     description_markdown: str
-    remediation_markdown: str
     category: str
     rule_id: str
     fingerprint: str | None

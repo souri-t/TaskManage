@@ -161,7 +161,7 @@ Rule IDは`MANUAL-…`として内部で自動設定されます。
 ### Codexに修正を依頼する
 
 指摘を`対応予定`へ変更すると、詳細画面から**Codexに修正を依頼**できます。
-依頼事項は任意です。空欄の場合も、Codexは指摘本文と修正案に基づいて対応します。
+依頼事項は任意です。空欄の場合も、Codexは指摘本文に基づいて対応します。
 
 対象リポジトリをCodexで開いて、次だけを依頼してください。
 
@@ -181,7 +181,7 @@ git config review-hub.repository example/backend
 
 ## Markdownとコード
 
-説明と修正案はMarkdown原文で保存し、画面ではGFMとShikiを使って表示します。
+指摘本文はMarkdown原文で保存し、画面ではGFMとShikiを使って表示します。修正案などの補足は、必要に応じて本文内のMarkdown見出しとして記載します。
 生HTML、非HTTP(S)リンク、外部埋め込みはレンダリングしません。fenced code block、
 言語表示、行番号、コピー、Markdown原文とプレビューの切替に対応します。
 

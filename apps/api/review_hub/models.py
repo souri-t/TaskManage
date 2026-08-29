@@ -125,7 +125,6 @@ class Finding(Base):
     )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description_markdown: Mapped[str] = mapped_column(Text, nullable=False)
-    remediation_markdown: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(128), nullable=False)
     rule_id: Mapped[str] = mapped_column(String(255), nullable=False)

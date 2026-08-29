@@ -19,7 +19,7 @@ branch, or test scope.
 2. Check `GET http://127.0.0.1:8080/readyz`, then list only requested findings
    with `GET /api/v1/findings?repository=<name>&status=対応予定&codex_fix_requested=true`.
    If none exist, say so and make no code or Hub changes.
-3. For each finding, read its description, remediation, code excerpt, and
+3. For each finding, read its Markdown description, code excerpt, and
    optional `codex_fix_request_note`. Inspect the current source before acting;
    the stored excerpt may be stale. Start it with
    `POST /api/v1/findings/{id}/codex-fix-start` immediately before modifying
